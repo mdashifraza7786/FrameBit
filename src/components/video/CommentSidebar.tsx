@@ -3,16 +3,20 @@
 import React, { useState, useRef, useEffect } from 'react';
 import {
   MessageSquare,
-  Send,
   CornerDownRight,
   CheckCircle2,
-  Circle,
+  Check,
+  RotateCcw,
   Trash2,
   Edit2,
   Clock,
+  MapPin,
+  Pencil,
+  Send,
 } from 'lucide-react';
 import { CommentData, UserProfile } from '@/lib/types';
 import { formatTimecode } from '@/lib/timecode';
+import { MentionTextarea, MentionMember, renderWithMentions } from '@/components/common/MentionTextarea';
 
 interface CommentSidebarProps {
   comments: CommentData[];
@@ -20,12 +24,25 @@ interface CommentSidebarProps {
   currentVersionNumber: number;
   activeCommentId?: string | null;
   currentUser?: UserProfile | null;
+  filter?: 'all' | 'active' | 'resolved';
+  onFilterChange?: (filter: 'all' | 'active' | 'resolved') => void;
   onSeekTo: (timestamp: number, commentId?: string) => void;
-  onAddComment: (text: string, timestamp: number, parentCommentId?: string, authorName?: string) => Promise<void>;
+  onAddComment: (
+    text: string,
+    timestamp: number,
+    parentCommentId?: string,
+    authorName?: string,
+    x?: number,
+    y?: number,
+    drawingData?: string
+  ) => Promise<void>;
   onResolveComment: (commentId: string, resolved: boolean) => Promise<void>;
   onDeleteComment: (commentId: string) => Promise<void>;
   onEditComment: (commentId: string, text: string) => Promise<void>;
   allowGuestComments?: boolean;
+  draftPin?: { x: number; y: number; timestamp: number; drawingData?: string } | null;
+  onClearDraftPin?: () => void;
+  projectId?: string;
 }
 
 export function CommentSidebar({
@@ -34,24 +51,60 @@ export function CommentSidebar({
   currentVersionNumber,
   activeCommentId,
   currentUser,
+  filter: externalFilter,
+  onFilterChange,
   onSeekTo,
   onAddComment,
   onResolveComment,
   onDeleteComment,
   onEditComment,
   allowGuestComments = false,
+  projectId,
 }: CommentSidebarProps) {
-  const [filter, setFilter] = useState<'all' | 'active' | 'resolved'>('all');
-  const [newCommentText, setNewCommentText] = useState('');
-  const [guestName, setGuestName] = useState('');
+  const [internalFilter, setInternalFilter] = useState<'all' | 'active' | 'resolved'>('all');
+  const filter = externalFilter || internalFilter;
+
+  const handleFilterChange = (f: 'all' | 'active' | 'resolved') => {
+    setInternalFilter(f);
+    if (onFilterChange) onFilterChange(f);
+  };
   const [replyingToId, setReplyingToId] = useState<string | null>(null);
   const [replyText, setReplyText] = useState('');
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editText, setEditText] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [members, setMembers] = useState<MentionMember[]>([]);
 
-  const commentsEndRef = useRef<HTMLDivElement>(null);
   const activeCardRef = useRef<HTMLDivElement>(null);
+
+  // Fetch project members for @mentions
+  useEffect(() => {
+    if (!projectId) return;
+    fetch(`/api/projects/${projectId}`)
+      .then((r) => r.json())
+      .then((data) => {
+        const proj = data.project;
+        if (!proj) return;
+        const all: MentionMember[] = [
+          { id: proj.owner._id, name: proj.owner.name, email: proj.owner.email, role: 'owner' },
+          ...(proj.members || []).map((m: any) => ({
+            id: m.userId._id,
+            name: m.userId.name,
+            email: m.userId.email,
+            role: m.role,
+          })),
+        ];
+        // Deduplicate by id, exclude self
+        const seen = new Set<string>();
+        const filtered = all.filter((m) => {
+          if (seen.has(m.id)) return false;
+          seen.add(m.id);
+          return m.id !== currentUser?.id;
+        });
+        setMembers(filtered);
+      })
+      .catch(() => {});
+  }, [projectId, currentUser?.id]);
 
   // Auto-scroll to active comment when clicked on timeline
   useEffect(() => {
@@ -60,25 +113,14 @@ export function CommentSidebar({
     }
   }, [activeCommentId]);
 
-  const handleSubmitTopLevel = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!newCommentText.trim() || isSubmitting) return;
-
-    setIsSubmitting(true);
-    try {
-      await onAddComment(newCommentText.trim(), currentTimestamp, undefined, guestName);
-      setNewCommentText('');
-    } finally {
-      setIsSubmitting(false);
-    }
-  };
-
   const handleSubmitReply = async (parentCommentId: string) => {
     if (!replyText.trim() || isSubmitting) return;
 
     setIsSubmitting(true);
     try {
-      await onAddComment(replyText.trim(), currentTimestamp, parentCommentId, guestName);
+      const parent = comments.find((c) => c._id === parentCommentId);
+      const timestamp = parent ? parent.timestamp : currentTimestamp;
+      await onAddComment(replyText.trim(), timestamp, parentCommentId);
       setReplyText('');
       setReplyingToId(null);
     } finally {
@@ -87,14 +129,20 @@ export function CommentSidebar({
   };
 
   const handleSaveEdit = async (commentId: string) => {
-    if (!editText.trim()) return;
-    await onEditComment(commentId, editText.trim());
-    setEditingId(null);
-    setEditText('');
+    if (!editText.trim() || isSubmitting) return;
+
+    setIsSubmitting(true);
+    try {
+      await onEditComment(commentId, editText.trim());
+      setEditingId(null);
+      setEditText('');
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
-  // Filter top-level comments for current version
-  const topLevelComments = comments.filter((c) => !c.parentCommentId && c.versionNumber === currentVersionNumber);
+  // Filter top-level comments
+  const topLevelComments = comments.filter((c) => !c.parentCommentId);
 
   const filteredComments = topLevelComments.filter((c) => {
     if (filter === 'active') return !c.resolved;
@@ -102,92 +150,123 @@ export function CommentSidebar({
     return true;
   });
 
-  const getReplies = (parentId: string) => {
-    return comments.filter((c) => c.parentCommentId === parentId);
-  };
-
   return (
-    <div className="flex flex-col h-full bg-white dark:bg-zinc-950/80 border border-slate-200 dark:border-zinc-800/80 rounded-2xl overflow-hidden shadow-2xl backdrop-blur-md transition-colors">
-      {/* Sidebar Header & Filters */}
-      <div className="p-4 border-b border-slate-200 dark:border-zinc-800/80 bg-slate-50 dark:bg-zinc-900/60 space-y-3 shrink-0">
-        <div className="flex items-center justify-between">
+    <div className="flex flex-col h-full max-h-full min-h-0 bg-white dark:bg-zinc-950 border border-slate-200 dark:border-zinc-800 rounded-2xl overflow-hidden shadow-xl">
+      {/* Header & Filter Tabs */}
+      <div className="p-3.5 border-b border-slate-200 dark:border-zinc-800/80 bg-slate-50/50 dark:bg-zinc-900/40 shrink-0">
+        <div className="flex items-center justify-between gap-2">
           <div className="flex items-center gap-2">
             <MessageSquare className="w-4 h-4 text-teal-600 dark:text-teal-400" />
-            <span className="font-semibold text-sm text-slate-800 dark:text-zinc-100">Comments</span>
-            <span className="text-xs px-2 py-0.5 rounded-full bg-slate-200 dark:bg-zinc-800 text-slate-600 dark:text-zinc-400 border border-slate-300 dark:border-zinc-700 font-mono">
+            <h3 className="font-semibold text-sm text-slate-800 dark:text-zinc-200">Comments</h3>
+            <span className="px-2 py-0.5 rounded-full bg-slate-200 dark:bg-zinc-800 text-[11px] font-mono text-slate-600 dark:text-zinc-400">
               {topLevelComments.length}
             </span>
           </div>
 
-          {/* Filter Pills */}
-          <div className="flex items-center gap-1 bg-slate-200/70 dark:bg-zinc-950 p-1 rounded-xl border border-slate-300 dark:border-zinc-800">
-            {(['all', 'active', 'resolved'] as const).map((f) => (
+          <div className="flex items-center gap-1 bg-slate-200 dark:bg-zinc-900 p-0.5 rounded-lg border border-slate-300/50 dark:border-zinc-800 text-xs">
+            {(['all', 'active', 'resolved'] as const).map((tab) => (
               <button
-                key={f}
-                onClick={() => setFilter(f)}
-                className={`px-2 py-0.5 rounded-lg text-[11px] font-medium capitalize transition-colors ${
-                  filter === f
-                    ? 'bg-teal-600 text-white dark:bg-teal-600/30 dark:text-teal-300 font-semibold'
-                    : 'text-slate-600 dark:text-zinc-400 hover:text-slate-900 dark:hover:text-zinc-200'
+                key={tab}
+                onClick={() => handleFilterChange(tab)}
+                className={`px-2.5 py-0.5 rounded-md font-medium capitalize transition-all ${
+                  filter === tab
+                    ? 'bg-teal-600 text-white shadow-sm'
+                    : 'text-slate-500 dark:text-zinc-400 hover:text-slate-900 dark:hover:text-zinc-200'
                 }`}
               >
-                {f}
+                {tab}
               </button>
             ))}
           </div>
         </div>
       </div>
 
-      {/* Comments List */}
-      <div className="flex-1 overflow-y-auto p-4 space-y-3.5 divide-y divide-slate-100 dark:divide-zinc-800/40">
+      {/* Scrollable Comment Feed */}
+      <div className="flex-1 min-h-0 overflow-y-auto p-2.5 space-y-2 custom-scrollbar">
         {filteredComments.length === 0 ? (
-          <div className="py-16 text-center text-slate-400 dark:text-zinc-500 text-xs space-y-2">
-            <MessageSquare className="w-8 h-8 mx-auto opacity-30 text-slate-400 dark:text-zinc-400" />
-            <p>No comments found in this view.</p>
-            <p className="text-[11px] text-slate-500 dark:text-zinc-600">Pause playback and type below to leave feedback.</p>
+          <div className="h-full min-h-[180px] flex flex-col items-center justify-center text-center p-4 text-slate-400 dark:text-zinc-600">
+            <MessageSquare className="w-7 h-7 mb-2 stroke-1" />
+            <p className="text-xs font-medium">No comments found in this view.</p>
+            <p className="text-[10px] text-slate-500 dark:text-zinc-500 mt-1">
+              Select <span className="text-teal-500 font-semibold">Pin</span> or{' '}
+              <span className="text-cyan-500 font-semibold">Draw</span> tool on video to add precise feedback.
+            </p>
           </div>
         ) : (
           filteredComments.map((comment) => {
+            const replies = comments.filter((c) => c.parentCommentId === comment._id);
             const isActive = activeCommentId === comment._id;
-            const replies = getReplies(comment._id);
-            const authorName = comment.userId?.name || comment.guestName || 'Guest';
-            const isAuthor = currentUser && comment.userId?._id === currentUser.id;
+            const authorName = comment.userId?.name || comment.guestName || 'Reviewer';
+            const isAuthor =
+              currentUser &&
+              (comment.userId?._id === currentUser.id ||
+                (comment.userId as any) === currentUser.id ||
+                (comment.userId as any)?._id === currentUser.id);
 
             return (
               <div
                 key={comment._id}
-                ref={isActive ? activeCardRef : undefined}
-                className={`pt-3 first:pt-0 rounded-xl transition-all ${
-                  isActive ? 'p-3 bg-teal-50 dark:bg-teal-950/20 border border-teal-500/40 shadow-lg shadow-teal-500/5' : ''
+                ref={isActive ? activeCardRef : null}
+                className={`p-2.5 rounded-xl border transition-all ${
+                  isActive
+                    ? 'bg-teal-50/70 dark:bg-teal-950/20 border-teal-500 ring-2 ring-teal-500/20 shadow-md'
+                    : 'bg-white dark:bg-zinc-900/50 border-slate-200 dark:border-zinc-800/80 hover:border-slate-300 dark:hover:border-zinc-700'
                 }`}
               >
                 {/* Comment Header */}
-                <div className="flex items-center justify-between gap-2 mb-1.5">
-                  <div className="flex items-center gap-2 min-w-0">
-                    {/* Timestamp Jump Button */}
+                <div className="flex items-center justify-between gap-1.5 mb-1.5">
+                  <div className="flex items-center gap-1.5 min-w-0 flex-wrap">
+                    {/* Timestamp Jump Button — shows range if available */}
                     <button
                       onClick={() => onSeekTo(comment.timestamp, comment._id)}
-                      className="px-2 py-0.5 rounded-md bg-teal-500/10 dark:bg-teal-600/20 hover:bg-teal-500/20 text-teal-700 dark:text-teal-300 font-mono text-[11px] font-semibold border border-teal-500/30 flex items-center gap-1 transition-colors"
+                      className="px-1.5 py-0.5 rounded-md bg-teal-500/10 dark:bg-teal-600/20 hover:bg-teal-500/20 text-teal-700 dark:text-teal-300 font-mono text-[10px] font-semibold border border-teal-500/30 flex items-center gap-1 transition-colors shrink-0"
                       title="Jump to video timestamp"
                     >
-                      <Clock className="w-3 h-3 text-teal-600 dark:text-teal-400" />
-                      {formatTimecode(comment.timestamp)}
+                      <Clock className="w-2.5 h-2.5 text-teal-600 dark:text-teal-400" />
+                      {comment.timestampEnd
+                        ? `${formatTimecode(comment.timestamp)} → ${formatTimecode(comment.timestampEnd)}`
+                        : formatTimecode(comment.timestamp)}
                     </button>
-                    <span className="font-semibold text-xs text-slate-800 dark:text-zinc-200 truncate">{authorName}</span>
+                    <span className="font-semibold text-xs text-slate-800 dark:text-zinc-200 truncate">
+                      {authorName}
+                    </span>
+
+                    {comment.drawingData ? (
+                      <span className="px-1.5 py-0.2 rounded bg-purple-500/10 dark:bg-purple-500/20 text-purple-600 dark:text-purple-400 text-[9px] font-mono flex items-center gap-0.5 border border-purple-500/30 shrink-0">
+                        <Pencil className="w-2 h-2" />
+                        <span>Drawing</span>
+                      </span>
+                    ) : comment.x !== undefined && comment.y !== undefined ? (
+                      <span className="px-1.5 py-0.2 rounded bg-teal-500/10 dark:bg-teal-500/20 text-teal-600 dark:text-teal-400 text-[9px] font-mono flex items-center gap-0.5 border border-teal-500/30 shrink-0">
+                        <MapPin className="w-2 h-2" />
+                        <span>Pin ({Math.round(comment.x)}%, {Math.round(comment.y)}%)</span>
+                      </span>
+                    ) : null}
                   </div>
 
-                  {/* Resolve / Reopen Toggle */}
-                  <div className="flex items-center gap-1">
+                  {/* Actions: Resolve & Edit/Delete */}
+                  <div className="flex items-center gap-1 shrink-0">
+                    {/* Resolve / Reopen Button */}
                     <button
                       onClick={() => onResolveComment(comment._id, !comment.resolved)}
-                      className={`p-1 rounded-md transition-colors ${
+                      className={`flex items-center gap-1 px-1.5 py-0.5 rounded-lg text-[9px] font-medium border transition-all ${
                         comment.resolved
-                          ? 'text-emerald-500 bg-emerald-50 dark:bg-emerald-950/40'
-                          : 'text-slate-400 dark:text-zinc-500 hover:text-slate-700 dark:hover:text-zinc-300'
+                          ? 'border-emerald-500/40 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 hover:bg-rose-500/10 hover:border-rose-500/30 hover:text-rose-500'
+                          : 'border-slate-300 dark:border-zinc-700 bg-slate-100 dark:bg-zinc-900/60 hover:bg-emerald-500/10 hover:border-emerald-500/40 text-slate-500 dark:text-zinc-400 hover:text-emerald-600 dark:hover:text-emerald-400'
                       }`}
-                      title={comment.resolved ? 'Reopen comment' : 'Mark as resolved'}
+                      title={comment.resolved ? 'Click to reopen feedback' : 'Mark feedback as resolved'}
                     >
-                      {comment.resolved ? <CheckCircle2 className="w-4 h-4" /> : <Circle className="w-4 h-4" />}
+                      {comment.resolved ? (
+                        <>
+                          <CheckCircle2 className="w-2.5 h-2.5 text-emerald-500" />
+                          <span>Resolved</span>
+                        </>
+                      ) : (
+                        <>
+                          <Check className="w-2.5 h-2.5" />
+                          <span>Resolve</span>
+                        </>
+                      )}
                     </button>
 
                     {/* Edit/Delete Actions */}
@@ -198,17 +277,17 @@ export function CommentSidebar({
                             setEditingId(comment._id);
                             setEditText(comment.text);
                           }}
-                          className="p-1 hover:text-slate-700 dark:hover:text-zinc-300 transition-colors"
+                          className="p-0.5 hover:text-slate-700 dark:hover:text-zinc-300 transition-colors rounded"
                           title="Edit"
                         >
-                          <Edit2 className="w-3 h-3" />
+                          <Edit2 className="w-2.5 h-2.5" />
                         </button>
                         <button
                           onClick={() => onDeleteComment(comment._id)}
-                          className="p-1 hover:text-rose-500 transition-colors"
+                          className="p-0.5 hover:text-rose-600 dark:hover:text-rose-400 transition-colors rounded"
                           title="Delete"
                         >
-                          <Trash2 className="w-3 h-3" />
+                          <Trash2 className="w-2.5 h-2.5" />
                         </button>
                       </div>
                     )}
@@ -240,8 +319,14 @@ export function CommentSidebar({
                     </div>
                   </div>
                 ) : (
-                  <p className={`text-xs leading-relaxed ${comment.resolved ? 'text-slate-400 dark:text-zinc-500 line-through' : 'text-slate-700 dark:text-zinc-300'}`}>
-                    {comment.text}
+                  <p
+                    className={`text-xs leading-relaxed ${
+                      comment.resolved
+                        ? 'text-slate-400 dark:text-zinc-500 line-through'
+                        : 'text-slate-700 dark:text-zinc-300'
+                    }`}
+                  >
+                    {renderWithMentions(comment.text)}
                   </p>
                 )}
 
@@ -281,12 +366,13 @@ export function CommentSidebar({
                 {/* Inline Reply Input */}
                 {replyingToId === comment._id && (
                   <div className="mt-2.5 pl-3 border-l border-teal-500/40 space-y-2">
-                    <input
-                      type="text"
-                      placeholder="Write a reply..."
+                    <MentionTextarea
                       value={replyText}
-                      onChange={(e) => setReplyText(e.target.value)}
-                      onKeyDown={(e) => e.key === 'Enter' && handleSubmitReply(comment._id)}
+                      onChange={setReplyText}
+                      onKeyDown={(e) => e.key === 'Enter' && !e.shiftKey && handleSubmitReply(comment._id)}
+                      placeholder="Reply... type @ to mention someone"
+                      rows={2}
+                      members={members}
                       className="w-full bg-slate-50 dark:bg-zinc-900 border border-slate-300 dark:border-zinc-700/80 rounded-xl px-3 py-1.5 text-xs text-slate-900 dark:text-zinc-100 placeholder-slate-400 dark:placeholder-zinc-500 focus:outline-none focus:border-teal-500"
                     />
                     <div className="flex justify-end gap-2">
@@ -299,9 +385,10 @@ export function CommentSidebar({
                       <button
                         onClick={() => handleSubmitReply(comment._id)}
                         disabled={isSubmitting || !replyText.trim()}
-                        className="px-3 py-1 text-[11px] bg-teal-600 hover:bg-teal-500 text-white rounded-lg disabled:opacity-50"
+                        className="px-3 py-1 text-[11px] bg-teal-600 hover:bg-teal-500 text-white rounded-lg disabled:opacity-50 flex items-center gap-1"
                       >
-                        Send
+                        <Send className="w-3 h-3" />
+                        <span>Send</span>
                       </button>
                     </div>
                   </div>
@@ -310,53 +397,7 @@ export function CommentSidebar({
             );
           })
         )}
-        <div ref={commentsEndRef} />
       </div>
-
-      {/* New Top-Level Comment Input Form */}
-      <form onSubmit={handleSubmitTopLevel} className="p-3.5 border-t border-slate-200 dark:border-zinc-800/80 bg-slate-50 dark:bg-zinc-900/70 space-y-2.5 shrink-0">
-        <div className="flex items-center justify-between text-xs">
-          <div className="flex items-center gap-1.5 text-slate-600 dark:text-zinc-400 font-mono text-[11px]">
-            <Clock className="w-3.5 h-3.5 text-teal-600 dark:text-teal-400" />
-            <span>At: </span>
-            <span className="font-bold text-teal-700 dark:text-teal-300">{formatTimecode(currentTimestamp)}</span>
-          </div>
-
-          {!currentUser && allowGuestComments && (
-            <input
-              type="text"
-              placeholder="Your name"
-              value={guestName}
-              onChange={(e) => setGuestName(e.target.value)}
-              className="w-28 bg-white dark:bg-zinc-950 border border-slate-300 dark:border-zinc-800 rounded-lg px-2 py-0.5 text-[11px] text-slate-800 dark:text-zinc-200 placeholder-slate-400 dark:placeholder-zinc-500 focus:outline-none"
-            />
-          )}
-        </div>
-
-        <div className="relative">
-          <textarea
-            rows={2}
-            value={newCommentText}
-            onChange={(e) => setNewCommentText(e.target.value)}
-            placeholder="Add comment at current timestamp..."
-            className="w-full bg-white dark:bg-zinc-950 border border-slate-300 dark:border-zinc-800 rounded-xl p-3 pr-10 text-xs text-slate-900 dark:text-zinc-100 placeholder-slate-400 dark:placeholder-zinc-500 focus:outline-none focus:border-teal-500/50 resize-none"
-            onKeyDown={(e) => {
-              if (e.key === 'Enter' && !e.shiftKey) {
-                e.preventDefault();
-                handleSubmitTopLevel(e);
-              }
-            }}
-          />
-          <button
-            type="submit"
-            disabled={isSubmitting || !newCommentText.trim()}
-            className="absolute bottom-3 right-3 p-1.5 rounded-lg bg-teal-600 hover:bg-teal-500 text-white disabled:opacity-40 transition-all shadow-md"
-            title="Post Comment"
-          >
-            <Send className="w-3.5 h-3.5" />
-          </button>
-        </div>
-      </form>
     </div>
   );
 }

@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { connectDB } from '@/lib/db';
-import { VideoAsset, Comment, Notification, ShareLink, Project } from '@/lib/models';
+import { VideoAsset, Comment, ShareLink, Project } from '@/lib/models';
 import { getSessionUser, verifyProjectAccess } from '@/lib/auth';
 import { emitRealtimeEvent } from '@/lib/events';
 
@@ -45,7 +45,7 @@ export async function POST(
       }
     }
 
-    const { text, timestamp, frameNumber, versionNumber, parentCommentId, authorName } = await req.json();
+    const { text, timestamp, timestampEnd, frameNumber, versionNumber, parentCommentId, authorName, x, y, drawingData } = await req.json();
 
     if (!text || !text.trim()) {
       return NextResponse.json({ error: 'Comment text is required' }, { status: 400 });
@@ -63,55 +63,20 @@ export async function POST(
       guestName,
       text: text.trim(),
       timestamp: typeof timestamp === 'number' ? timestamp : 0,
+      timestampEnd: typeof timestampEnd === 'number' && timestampEnd > timestamp ? timestampEnd : undefined,
       frameNumber: typeof frameNumber === 'number' ? frameNumber : undefined,
+      x: typeof x === 'number' ? x : undefined,
+      y: typeof y === 'number' ? y : undefined,
+      drawingData: typeof drawingData === 'string' ? drawingData : undefined,
       parentCommentId: parentCommentId || null,
       resolved: false,
     });
 
     await comment.populate('userId', 'name email avatar role');
 
-    // Notify project members or parent comment author
-    if (parentCommentId) {
-      const parent = await Comment.findById(parentCommentId);
-      if (parent && parent.userId && (!user || parent.userId.toString() !== user._id.toString())) {
-        await Notification.create({
-          userId: parent.userId,
-          actorId: user?._id,
-          type: 'comment_reply',
-          projectId: project._id,
-          assetId: asset._id,
-          commentId: comment._id,
-          message: `${user?.name || guestName} replied to your comment on "${asset.name}"`,
-        });
-      }
-    } else {
-      // Notify all project members and owner
-      const targetUserIds = project.members
-        .map((m) => m.userId.toString())
-        .concat(project.ownerId.toString())
-        .filter((uid) => !user || uid !== user._id.toString());
-
-      for (const targetId of targetUserIds) {
-        await Notification.create({
-          userId: targetId,
-          actorId: user?._id,
-          type: 'comment_added',
-          projectId: project._id,
-          assetId: asset._id,
-          commentId: comment._id,
-          message: `${user?.name || guestName} commented at ${Math.floor(comment.timestamp)}s on "${asset.name}"`,
-        });
-      }
-    }
-
-    emitRealtimeEvent({
-      type: 'notification:created',
-      projectId: project._id.toString(),
-      assetId: asset._id.toString(),
-      data: { message: `New comment on ${asset.name}` },
-      actorId: user?._id?.toString(),
-      timestamp: new Date().toISOString(),
-    });
+    // No notifications are sent for comments (including @mentions) — only the
+    // realtime SSE broadcast below, so the comment shows up live without spamming
+    // the notification list.
 
     // Broadcast SSE realtime event
     emitRealtimeEvent({

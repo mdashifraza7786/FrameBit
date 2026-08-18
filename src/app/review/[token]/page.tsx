@@ -24,6 +24,8 @@ export default function GuestReviewPage({
   const [currentVersionNumber, setCurrentVersionNumber] = useState<number>(1);
   const [activeCommentId, setActiveCommentId] = useState<string | null>(null);
   const [seekToTime, setSeekToTime] = useState<number | null>(null);
+  const [draftPin, setDraftPin] = useState<{ x: number; y: number; timestamp: number; drawingData?: string } | null>(null);
+  const [annotationFilter, setAnnotationFilter] = useState<'all' | 'active' | 'resolved'>('all');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
 
@@ -39,10 +41,15 @@ export default function GuestReviewPage({
       const data = await res.json();
       setAsset(data.asset);
       setProject(data.project);
-      setVersions(data.versions || []);
+      const versionList: VideoVersionData[] = data.versions || [];
+      setVersions(versionList);
       setComments(data.comments || []);
       setShareLink(data.shareLink);
-      setCurrentVersionNumber(data.asset.currentVersionNumber || 1);
+      const latestVer =
+        versionList.length > 0
+          ? Math.max(...versionList.map((v) => v.versionNumber))
+          : data.asset?.currentVersionNumber || 1;
+      setCurrentVersionNumber(latestVer);
     } catch (err: any) {
       setError(err.message || 'Failed to load video review');
     } finally {
@@ -106,7 +113,10 @@ export default function GuestReviewPage({
     text: string,
     timestamp: number,
     parentCommentId?: string,
-    authorName?: string
+    authorName?: string,
+    x?: number,
+    y?: number,
+    drawingData?: string
   ) => {
     if (!asset) return;
     try {
@@ -119,6 +129,9 @@ export default function GuestReviewPage({
           versionNumber: currentVersionNumber,
           parentCommentId,
           authorName: authorName || 'Guest Reviewer',
+          x,
+          y,
+          drawingData,
         }),
       });
 
@@ -232,21 +245,32 @@ export default function GuestReviewPage({
               src={streamSrc}
               comments={comments.filter((c) => c.versionNumber === currentVersionNumber)}
               activeCommentId={activeCommentId}
+              annotationFilter={annotationFilter}
+              onFilterChange={setAnnotationFilter}
               onSelectComment={(id, t) => {
                 setActiveCommentId(id);
                 setSeekToTime(t);
               }}
               onAddCommentAtTime={(t) => setSeekToTime(t)}
+              onAddComment={handleAddComment}
+              allowGuestComments={true}
               seekToTime={seekToTime}
+              draftPin={draftPin}
+              onDraftPinChange={setDraftPin}
+              onResolveComment={handleResolveComment}
             />
           </div>
 
-          <div className="h-[680px]">
+          <div className="h-[420px] lg:h-[450px] xl:h-[480px] max-h-[500px] flex flex-col min-w-0">
             <CommentSidebar
               comments={comments}
               currentTimestamp={seekToTime || 0}
               currentVersionNumber={currentVersionNumber}
               activeCommentId={activeCommentId}
+              filter={annotationFilter}
+              onFilterChange={setAnnotationFilter}
+              draftPin={draftPin}
+              onClearDraftPin={() => setDraftPin(null)}
               onSeekTo={(t, id) => {
                 setSeekToTime(t);
                 if (id) setActiveCommentId(id);

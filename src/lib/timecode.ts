@@ -18,31 +18,40 @@ export function formatSMPTETimecode(seconds: number, fps = 30): string {
 }
 
 /**
- * Formats seconds into clean MM:SS.ms (e.g., 01:24.500)
+ * Formats seconds into clean HH:MM:SS or MM:SS (No milliseconds)
  */
 export function formatTimecode(seconds: number): string {
   if (isNaN(seconds) || seconds < 0) seconds = 0;
 
-  const mins = Math.floor(seconds / 60);
-  const secs = Math.floor(seconds % 60);
-  const ms = Math.floor((seconds % 1) * 1000);
+  const totalSeconds = Math.floor(seconds);
+  const hours = Math.floor(totalSeconds / 3600);
+  const mins = Math.floor((totalSeconds % 3600) / 60);
+  const secs = totalSeconds % 60;
 
   const pad = (num: number, size = 2) => String(num).padStart(size, '0');
 
-  if (ms > 0) {
-    return `${pad(mins)}:${pad(secs)}.${pad(Math.floor(ms / 100), 1)}`;
+  if (hours > 0) {
+    return `${pad(hours)}:${pad(mins)}:${pad(secs)}`;
   }
   return `${pad(mins)}:${pad(secs)}`;
 }
 
 /**
- * Formats seconds into standard MM:SS
+ * Formats seconds into standard HH:MM:SS or MM:SS
  */
 export function formatDuration(seconds: number): string {
   if (isNaN(seconds) || seconds < 0) return '00:00';
-  const mins = Math.floor(seconds / 60);
-  const secs = Math.floor(seconds % 60);
-  return `${String(mins).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
+  const totalSeconds = Math.floor(seconds);
+  const hours = Math.floor(totalSeconds / 3600);
+  const mins = Math.floor((totalSeconds % 3600) / 60);
+  const secs = totalSeconds % 60;
+
+  const pad = (num: number, size = 2) => String(num).padStart(size, '0');
+
+  if (hours > 0) {
+    return `${pad(hours)}:${pad(mins)}:${pad(secs)}`;
+  }
+  return `${pad(mins)}:${pad(secs)}`;
 }
 
 /**

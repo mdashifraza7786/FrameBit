@@ -54,7 +54,7 @@ export async function POST(
       }
       versionNumber = asset.currentVersionNumber + 1;
       asset.currentVersionNumber = versionNumber;
-      asset.status = 'In Review';
+      asset.status = 'Updated';
       if (thumbnailUrl) asset.thumbnailUrl = thumbnailUrl;
       await asset.save();
     } else {
@@ -109,7 +109,7 @@ export async function POST(
         type: 'version_uploaded',
         projectId: project._id,
         assetId: asset._id,
-        message: `${user.name} uploaded ${asset.name} (v${versionNumber}) for review`,
+        message: `${user.name} uploaded updated version (${asset.name} v${versionNumber}) for review`,
       });
     }
 
@@ -117,7 +117,20 @@ export async function POST(
       type: 'notification:created',
       projectId: project._id.toString(),
       assetId: asset._id.toString(),
-      data: { message: `New version v${versionNumber} uploaded for ${asset.name}` },
+      data: { message: `Updated version v${versionNumber} uploaded for ${asset.name}` },
+      actorId: user._id.toString(),
+      timestamp: new Date().toISOString(),
+    });
+
+    emitRealtimeEvent({
+      type: 'status:changed',
+      projectId: project._id.toString(),
+      assetId: asset._id.toString(),
+      data: {
+        assetId: asset._id.toString(),
+        status: asset.status,
+        updatedBy: user.name,
+      },
       actorId: user._id.toString(),
       timestamp: new Date().toISOString(),
     });

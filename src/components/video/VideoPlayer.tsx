@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useRef, useState, useEffect, useCallback } from 'react';
+import React, { useRef, useState, useEffect, useCallback, useMemo } from 'react';
 import {
   Play,
   Pause,
@@ -10,34 +10,219 @@ import {
   Minimize2,
   ChevronLeft,
   ChevronRight,
-  MessageSquarePlus,
   Loader2,
+  MapPin,
+  Send,
+  X,
+  Crosshair,
+  CheckCircle2,
+  Pencil,
+  RotateCcw,
+  MessageSquare,
+  Square,
+  Circle as CircleIcon,
+  ArrowUpRight,
+  Sparkles,
+  Clock,
+  Trash2,
+  Check,
 } from 'lucide-react';
 import { formatSMPTETimecode, formatTimecode, formatDuration } from '@/lib/timecode';
-import { CommentData } from '@/lib/types';
+import { CommentData, UserProfile } from '@/lib/types';
+
+interface Point {
+  x: number;
+  y: number;
+}
+
+export interface DraftPinData {
+  x: number;
+  y: number;
+  timestamp: number;
+  drawingData?: string;
+}
 
 interface VideoPlayerProps {
   src: string;
   comments: CommentData[];
   activeCommentId?: string | null;
+  annotationFilter?: 'all' | 'active' | 'resolved';
+  onFilterChange?: (filter: 'all' | 'active' | 'resolved') => void;
   onSelectComment?: (commentId: string, timestamp: number) => void;
   onAddCommentAtTime?: (timestamp: number, frameNumber: number) => void;
+  onAddComment?: (
+    text: string,
+    timestamp: number,
+    parentCommentId?: string,
+    authorName?: string,
+    x?: number,
+    y?: number,
+    drawingData?: string,
+    timestampEnd?: number
+  ) => Promise<void>;
   seekToTime?: number | null;
+  allowGuestComments?: boolean;
+  draftPin?: DraftPinData | null;
+  onDraftPinChange?: (pin: DraftPinData | null) => void;
+  currentUser?: UserProfile | null;
+  onResolveComment?: (commentId: string, resolved: boolean) => Promise<void>;
+  onDeleteComment?: (commentId: string) => Promise<void>;
 }
+
+const DRAW_COLORS = [
+  { name: 'Cyan', hex: '#06b6d4', ring: 'ring-cyan-500' },
+  { name: 'Emerald', hex: '#10b981', ring: 'ring-emerald-500' },
+  { name: 'Amber', hex: '#f59e0b', ring: 'ring-amber-500' },
+  { name: 'Rose', hex: '#f43f5e', ring: 'ring-rose-500' },
+  { name: 'Purple', hex: '#a855f7', ring: 'ring-purple-500' },
+];
+
+// Calculate safe clamped on-screen box positioning within the video viewport bounds (never overflowing screen)
+const getClampedPopoverStyle = (x: number, y: number) => {
+  // Clamp X between 20% and 80% to ensure a 280-320px box never crosses left or right edges
+  const clampedX = Math.max(20, Math.min(80, x));
+
+  // Flip vertically: if pin is in lower half (y > 55%), put the box ABOVE the pin; otherwise BELOW the pin
+  const isLowerHalf = y > 55;
+  const clampedY = isLowerHalf ? Math.max(8, y - 3) : Math.min(90, y + 3);
+  const transform = isLowerHalf ? 'translate(-50%, -100%)' : 'translate(-50%, 0%)';
+
+  return {
+    left: `${clampedX}%`,
+    top: `${clampedY}%`,
+    transform,
+  };
+};
+
+export type ActiveTool = 'pin' | 'draw' | 'rectangle' | 'circle' | 'arrow' | null;
+
+// Helper to generate SVG path for various shapes
+const generateShapeSvgPath = (tool: ActiveTool, points: Point[]): string => {
+  if (points.length === 0) return '';
+  if (tool === 'draw') {
+    if (points.length < 2) return '';
+    let d = `M ${points[0].x.toFixed(2)} ${points[0].y.toFixed(2)}`;
+    for (let i = 1; i < points.length - 1; i++) {
+      const xc = (points[i].x + points[i + 1].x) / 2;
+      const yc = (points[i].y + points[i + 1].y) / 2;
+      d += ` Q ${points[i].x.toFixed(2)} ${points[i].y.toFixed(2)}, ${xc.toFixed(2)} ${yc.toFixed(2)}`;
+    }
+    const last = points[points.length - 1];
+    d += ` L ${last.x.toFixed(2)} ${last.y.toFixed(2)}`;
+    return d;
+  }
+
+  if (points.length < 2) return '';
+  const start = points[0];
+  const end = points[points.length - 1];
+
+  if (tool === 'rectangle') {
+    const minX = Math.min(start.x, end.x);
+    const maxX = Math.max(start.x, end.x);
+    const minY = Math.min(start.y, end.y);
+    const maxY = Math.max(start.y, end.y);
+    return `M ${minX.toFixed(2)} ${minY.toFixed(2)} H ${maxX.toFixed(2)} V ${maxY.toFixed(2)} H ${minX.toFixed(2)} Z`;
+  }
+
+  if (tool === 'circle') {
+    const cx = (start.x + end.x) / 2;
+    const cy = (start.y + end.y) / 2;
+    const rx = Math.max(0.5, Math.abs(end.x - start.x) / 2);
+    const ry = Math.max(0.5, Math.abs(end.y - start.y) / 2);
+    return `M ${(cx - rx).toFixed(2)} ${cy.toFixed(2)} a ${rx.toFixed(2)} ${ry.toFixed(2)} 0 1 0 ${(2 * rx).toFixed(2)} 0 a ${rx.toFixed(2)} ${ry.toFixed(2)} 0 1 0 ${(-2 * rx).toFixed(2)} 0`;
+  }
+
+  if (tool === 'arrow') {
+    const x1 = start.x;
+    const y1 = start.y;
+    const x2 = end.x;
+    const y2 = end.y;
+    const dx = x2 - x1;
+    const dy = y2 - y1;
+    const angle = Math.atan2(dy, dx);
+    const headLen = 3.5; // % of viewBox
+    const hx1 = x2 - headLen * Math.cos(angle - 0.45);
+    const hy1 = y2 - headLen * Math.sin(angle - 0.45);
+    const hx2 = x2 - headLen * Math.cos(angle + 0.45);
+    const hy2 = y2 - headLen * Math.sin(angle + 0.45);
+    return `M ${x1.toFixed(2)} ${y1.toFixed(2)} L ${x2.toFixed(2)} ${y2.toFixed(2)} M ${hx1.toFixed(2)} ${hy1.toFixed(2)} L ${x2.toFixed(2)} ${y2.toFixed(2)} L ${hx2.toFixed(2)} ${hy2.toFixed(2)}`;
+  }
+
+  return '';
+};
+
+// Helper to reliably parse drawing JSON or SVG path string
+const parseDrawingData = (data: any): { path: string; color: string; width: number; shape?: string } | null => {
+  if (!data) return null;
+  if (typeof data === 'object') {
+    if (data.path && typeof data.path === 'string') {
+      return {
+        path: data.path,
+        color: data.color || '#06b6d4',
+        width: typeof data.width === 'number' ? data.width : 0.8,
+        shape: data.shape,
+      };
+    }
+    return null;
+  }
+  if (typeof data === 'string') {
+    const trimmed = data.trim();
+    if (trimmed.startsWith('{')) {
+      try {
+        const parsed = JSON.parse(trimmed);
+        if (parsed && typeof parsed === 'object' && parsed.path) {
+          return {
+            path: parsed.path,
+            color: parsed.color || '#06b6d4',
+            width: typeof parsed.width === 'number' ? parsed.width : 0.8,
+            shape: parsed.shape,
+          };
+        }
+      } catch {
+        // Fallback
+      }
+    } else if (trimmed.startsWith('M') || trimmed.startsWith('m')) {
+      return {
+        path: trimmed,
+        color: '#06b6d4',
+        width: 0.8,
+      };
+    }
+  }
+  return null;
+};
 
 export function VideoPlayer({
   src,
   comments,
   activeCommentId,
+  annotationFilter,
+  onFilterChange,
   onSelectComment,
   onAddCommentAtTime,
+  onAddComment,
   seekToTime,
+  allowGuestComments = false,
+  draftPin: externalDraftPin,
+  onDraftPinChange,
+  currentUser,
+  onResolveComment,
+  onDeleteComment,
 }: VideoPlayerProps) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
+  const viewportRef = useRef<HTMLDivElement>(null);
   const timelineRef = useRef<HTMLDivElement>(null);
   const isScrubbingRef = useRef(false);
   const wasPlayingBeforeScrubRef = useRef(false);
+
+  const [internalFilter, setInternalFilter] = useState<'all' | 'active' | 'resolved'>('all');
+  const currentFilter = annotationFilter || internalFilter;
+
+  const handleFilterChange = (f: 'all' | 'active' | 'resolved') => {
+    setInternalFilter(f);
+    if (onFilterChange) onFilterChange(f);
+  };
 
   const [isPlaying, setIsPlaying] = useState(false);
   const [isBuffering, setIsBuffering] = useState(false);
@@ -52,6 +237,43 @@ export function VideoPlayer({
   const [hoverX, setHoverX] = useState<number | null>(null);
   const [showSMPTE, setShowSMPTE] = useState(true);
   const [fps] = useState(30);
+
+  // Active Tool Mode: null (Normal Play Mode) | 'pin' | 'draw' | 'rectangle' | 'circle' | 'arrow'
+  const [activeTool, setActiveTool] = useState<ActiveTool>(null);
+  const [drawColor, setDrawColor] = useState<string>('#06b6d4');
+  const [drawStrokeWidth, setDrawStrokeWidth] = useState<number>(0.8);
+
+  // Drawing state
+  const isDrawingRef = useRef(false);
+  const currentStrokeRef = useRef<Point[]>([]);
+  const [currentStroke, setCurrentStroke] = useState<Point[]>([]);
+
+  // Range comment state — Start = pin timestamp, End = live playhead position while range mode is on
+  const [isRangeMode, setIsRangeMode] = useState(false);
+
+  // Local draft pin state fallback if not passed externally
+  const [internalDraftPin, setInternalDraftPin] = useState<DraftPinData | null>(null);
+  const activeDraftPin = externalDraftPin !== undefined ? externalDraftPin : internalDraftPin;
+
+  // Floating Composer local form state
+  const [composerText, setComposerText] = useState('');
+  const [composerGuestName, setComposerGuestName] = useState('');
+  const [isSubmitting, setIsSubmitting] = useState(false);
+
+  const setDraftPin = useCallback(
+    (pin: DraftPinData | null) => {
+      setInternalDraftPin(pin);
+      if (onDraftPinChange) {
+        onDraftPinChange(pin);
+      }
+      setComposerText('');
+      setIsRangeMode(false);
+    },
+    [onDraftPinChange]
+  );
+
+  // Dismissed active callout tracking
+  const [dismissedCalloutId, setDismissedCalloutId] = useState<string | null>(null);
 
   const bufferTimerRef = useRef<NodeJS.Timeout | null>(null);
 
@@ -70,7 +292,7 @@ export function VideoPlayer({
     setIsBuffering(false);
   }, []);
 
-  // Safe play helper to avoid AbortError when unmounted or paused
+  // Safe play helper
   const safePlay = useCallback(() => {
     if (!videoRef.current) return;
     const playPromise = videoRef.current.play();
@@ -79,6 +301,7 @@ export function VideoPlayer({
         .then(() => {
           setIsPlaying(true);
           clearBuffering();
+          setCurrentStroke([]);
         })
         .catch((err) => {
           if (err.name !== 'AbortError') {
@@ -97,6 +320,45 @@ export function VideoPlayer({
     clearBuffering();
   }, [clearBuffering]);
 
+  const togglePlay = useCallback(() => {
+    if (!videoRef.current) return;
+    if (videoRef.current.paused) {
+      safePlay();
+    } else {
+      safePause();
+    }
+  }, [safePlay, safePause]);
+
+  const stepFrames = useCallback(
+    (deltaFrames: number) => {
+      if (!videoRef.current) return;
+      safePause();
+      const frameDuration = 1 / fps;
+      const target = Math.max(0, Math.min(duration, videoRef.current.currentTime + deltaFrames * frameDuration));
+      videoRef.current.currentTime = target;
+      setCurrentTime(target);
+    },
+    [fps, duration, safePause]
+  );
+
+  const toggleFullscreen = useCallback(() => {
+    if (!containerRef.current) return;
+    if (!document.fullscreenElement) {
+      containerRef.current.requestFullscreen().catch(console.error);
+    } else {
+      document.exitFullscreen().catch(console.error);
+    }
+  }, []);
+
+  // Keep isFullscreen in sync when the user exits via Esc (or any non-button path)
+  useEffect(() => {
+    const handleFullscreenChange = () => {
+      setIsFullscreen(document.fullscreenElement === containerRef.current);
+    };
+    document.addEventListener('fullscreenchange', handleFullscreenChange);
+    return () => document.removeEventListener('fullscreenchange', handleFullscreenChange);
+  }, []);
+
   // Cleanup on unmount
   useEffect(() => {
     return () => {
@@ -109,91 +371,87 @@ export function VideoPlayer({
     };
   }, []);
 
-  // Sync seekToTime from props
+  // High-precision 60fps time tracking during playback
+  useEffect(() => {
+    let animationFrameId: number;
+
+    const updateLoop = () => {
+      if (videoRef.current && !videoRef.current.paused && !isScrubbingRef.current) {
+        setCurrentTime(videoRef.current.currentTime);
+      }
+      animationFrameId = requestAnimationFrame(updateLoop);
+    };
+
+    if (isPlaying) {
+      animationFrameId = requestAnimationFrame(updateLoop);
+    }
+
+    return () => {
+      if (animationFrameId) cancelAnimationFrame(animationFrameId);
+    };
+  }, [isPlaying]);
+
+  // Sync seekToTime from props (e.g. clicked from sidebar)
   useEffect(() => {
     if (seekToTime !== undefined && seekToTime !== null && videoRef.current) {
       videoRef.current.currentTime = seekToTime;
       setCurrentTime(seekToTime);
       safePause();
+      setDismissedCalloutId(null);
     }
   }, [seekToTime, safePause]);
 
-  const togglePlay = useCallback(() => {
-    if (!videoRef.current) return;
-    if (videoRef.current.paused) {
-      safePlay();
-    } else {
-      safePause();
-    }
-  }, [safePlay, safePause]);
-
-  const stepFrames = useCallback(
-    (direction: 1 | -1) => {
-      if (!videoRef.current) return;
-      safePause();
-      const frameDelta = 1 / fps;
-      const nextTime = Math.max(0, Math.min(duration, videoRef.current.currentTime + direction * frameDelta));
-      videoRef.current.currentTime = nextTime;
-      setCurrentTime(nextTime);
-    },
-    [duration, fps, safePause]
-  );
-
-  const toggleFullscreen = useCallback(() => {
-    if (!containerRef.current) return;
-    if (!document.fullscreenElement) {
-      containerRef.current.requestFullscreen();
-      setIsFullscreen(true);
-    } else {
-      document.exitFullscreen();
-      setIsFullscreen(false);
-    }
-  }, []);
-
-  // Keyboard shortcuts (Space, J/K/L, Left/Right arrows, F, M, C)
+  // Keyboard Shortcuts (J, K, L, Space, Arrow keys, C, P, D, Esc)
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      const activeTag = document.activeElement?.tagName.toLowerCase();
-      if (activeTag === 'input' || activeTag === 'textarea' || activeTag === 'select') return;
+      if (['INPUT', 'TEXTAREA'].includes((e.target as HTMLElement)?.tagName)) {
+        return;
+      }
 
       switch (e.code) {
         case 'Space':
+        case 'KeyK':
           e.preventDefault();
           togglePlay();
           break;
         case 'ArrowLeft':
+        case 'KeyJ':
           e.preventDefault();
           stepFrames(-1);
           break;
         case 'ArrowRight':
-          e.preventDefault();
-          stepFrames(1);
-          break;
-        case 'KeyJ':
-          e.preventDefault();
-          if (videoRef.current) {
-            setIsBuffering(true);
-            videoRef.current.currentTime = Math.max(0, videoRef.current.currentTime - 2);
-          }
-          break;
-        case 'KeyK':
-          e.preventDefault();
-          safePause();
-          break;
         case 'KeyL':
           e.preventDefault();
-          if (videoRef.current) {
-            setIsBuffering(true);
-            videoRef.current.currentTime = Math.min(duration, videoRef.current.currentTime + 2);
-          }
+          stepFrames(1);
           break;
         case 'KeyF':
           e.preventDefault();
           toggleFullscreen();
           break;
-        case 'KeyM':
+        case 'KeyP':
           e.preventDefault();
-          setIsMuted((prev) => !prev);
+          setActiveTool((prev) => (prev === 'pin' ? null : 'pin'));
+          if (isPlaying) safePause();
+          break;
+        case 'KeyD':
+          e.preventDefault();
+          setActiveTool((prev) => (prev === 'draw' ? null : 'draw'));
+          if (isPlaying) safePause();
+          break;
+        case 'KeyR':
+          e.preventDefault();
+          setActiveTool((prev) => (prev === 'rectangle' ? null : 'rectangle'));
+          if (isPlaying) safePause();
+          break;
+        case 'KeyO':
+          e.preventDefault();
+          setActiveTool((prev) => (prev === 'circle' ? null : 'circle'));
+          if (isPlaying) safePause();
+          break;
+        case 'KeyA':
+          e.preventDefault();
+          setActiveTool((prev) => (prev === 'arrow' ? null : 'arrow'));
+          if (isPlaying) safePause();
           break;
         case 'KeyC':
           e.preventDefault();
@@ -202,14 +460,174 @@ export function VideoPlayer({
             onAddCommentAtTime(currentTime, currentFrame);
           }
           break;
+        case 'Escape':
+          setDraftPin(null);
+          setCurrentStroke([]);
+          setActiveTool(null);
+          break;
       }
     };
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [togglePlay, safePause, stepFrames, toggleFullscreen, duration, currentTime, fps, onAddCommentAtTime]);
+  }, [togglePlay, safePause, stepFrames, toggleFullscreen, duration, currentTime, fps, isPlaying, onAddCommentAtTime, setDraftPin]);
 
-  // Calculate time from horizontal clientX position on timeline
+  // Convert points array to smooth SVG path string (0-100% normalized)
+  const pointsToSvgPath = (pts: Point[]) => {
+    if (pts.length < 2) return '';
+    let d = `M ${pts[0].x.toFixed(2)} ${pts[0].y.toFixed(2)}`;
+    for (let i = 1; i < pts.length - 1; i++) {
+      const xc = (pts[i].x + pts[i + 1].x) / 2;
+      const yc = (pts[i].y + pts[i + 1].y) / 2;
+      d += ` Q ${pts[i].x.toFixed(2)} ${pts[i].y.toFixed(2)}, ${xc.toFixed(2)} ${yc.toFixed(2)}`;
+    }
+    const last = pts[pts.length - 1];
+    d += ` L ${last.x.toFixed(2)} ${last.y.toFixed(2)}`;
+    return d;
+  };
+
+  // Viewport Pointer Handlers for Drawing, Shapes & Pinning
+  const handleViewportPointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
+    if (!viewportRef.current || !videoRef.current) return;
+    if ((e.target as HTMLElement).closest('.pin-interactive-element')) return;
+
+    // Normal mode: click toggles play/pause
+    if (!activeTool) {
+      togglePlay();
+      return;
+    }
+
+    // Annotation tool active: ensure paused
+    if (!videoRef.current.paused) {
+      safePause();
+    }
+
+    const rect = viewportRef.current.getBoundingClientRect();
+    const x = Math.max(3, Math.min(97, ((e.clientX - rect.left) / rect.width) * 100));
+    const y = Math.max(3, Math.min(97, ((e.clientY - rect.top) / rect.height) * 100));
+
+    if (activeTool === 'pin') {
+      // Pin Mode: Direct click drops pin and opens on-screen floating composer
+      const roundedX = Math.round(x * 10) / 10;
+      const roundedY = Math.round(y * 10) / 10;
+      setDraftPin({
+        x: roundedX,
+        y: roundedY,
+        timestamp: currentTime,
+      });
+      setActiveTool(null);
+    } else {
+      // Shape / Drawing tools (draw, rectangle, circle, arrow)
+      (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+      isDrawingRef.current = true;
+      currentStrokeRef.current = [{ x, y }];
+      setCurrentStroke([{ x, y }]);
+      setDraftPin(null);
+    }
+  };
+
+  const handleViewportPointerMove = (e: React.PointerEvent<HTMLDivElement>) => {
+    if (!viewportRef.current) return;
+    const rect = viewportRef.current.getBoundingClientRect();
+    const x = Math.max(0, Math.min(100, ((e.clientX - rect.left) / rect.width) * 100));
+    const y = Math.max(0, Math.min(100, ((e.clientY - rect.top) / rect.height) * 100));
+
+    if (isDrawingRef.current && activeTool) {
+      if (activeTool === 'draw') {
+        currentStrokeRef.current.push({ x, y });
+      } else {
+        // Shapes: keep origin point and update current end point
+        currentStrokeRef.current = [currentStrokeRef.current[0], { x, y }];
+      }
+      setCurrentStroke([...currentStrokeRef.current]);
+    }
+  };
+
+  const handleViewportPointerUp = (e: React.PointerEvent<HTMLDivElement>) => {
+    if (isDrawingRef.current && activeTool) {
+      try {
+        (e.currentTarget as HTMLElement).releasePointerCapture(e.pointerId);
+      } catch {
+        // Ignored
+      }
+      isDrawingRef.current = false;
+
+      const pts = currentStrokeRef.current;
+      if (pts.length >= 2 || (activeTool === 'draw' && pts.length > 1)) {
+        const svgPath = generateShapeSvgPath(activeTool, pts);
+        let centerX = pts[0].x;
+        let centerY = pts[0].y;
+
+        if (activeTool === 'draw') {
+          const sumX = pts.reduce((acc, p) => acc + p.x, 0);
+          const sumY = pts.reduce((acc, p) => acc + p.y, 0);
+          centerX = Math.round((sumX / pts.length) * 10) / 10;
+          centerY = Math.round((sumY / pts.length) * 10) / 10;
+        } else {
+          centerX = Math.round(((pts[0].x + pts[pts.length - 1].x) / 2) * 10) / 10;
+          centerY = Math.round(((pts[0].y + pts[pts.length - 1].y) / 2) * 10) / 10;
+        }
+
+        setDraftPin({
+          x: centerX,
+          y: centerY,
+          timestamp: currentTime,
+          drawingData: JSON.stringify({
+            path: svgPath,
+            color: drawColor,
+            width: drawStrokeWidth,
+            shape: activeTool,
+          }),
+        });
+        setActiveTool(null);
+      }
+      setCurrentStroke([]);
+    }
+  };
+
+  // Submit on-screen floating composer comment
+  const handleSubmitFloatingComposer = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!composerText.trim() || isSubmitting || !onAddComment || !activeDraftPin) return;
+
+    setIsSubmitting(true);
+    try {
+      // For range-based comments: the end is always the current playhead position
+      // at submit time (live-tracked, no separate "confirm end" step to miss).
+      // 0.5s minimum gap — the server also rejects timestampEnd <= timestamp.
+      if (isRangeMode && Math.abs(currentTime - activeDraftPin.timestamp) >= 0.5) {
+        const start = Math.min(activeDraftPin.timestamp, currentTime);
+        const end = Math.max(activeDraftPin.timestamp, currentTime);
+        await onAddComment(
+          composerText.trim(),
+          start,
+          undefined,
+          composerGuestName || undefined,
+          activeDraftPin.x,
+          activeDraftPin.y,
+          activeDraftPin.drawingData,
+          end // timestampEnd as 8th arg
+        );
+      } else {
+        await onAddComment(
+          composerText.trim(),
+          activeDraftPin.timestamp,
+          undefined,
+          composerGuestName || undefined,
+          activeDraftPin.x,
+          activeDraftPin.y,
+          activeDraftPin.drawingData
+        );
+      }
+      setDraftPin(null);
+    } catch (err) {
+      console.error('Failed to post on-screen comment:', err);
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  // Timeline scrubber handlers
   const getTimeFromClientX = useCallback(
     (clientX: number) => {
       if (!timelineRef.current || duration === 0) return 0;
@@ -220,7 +638,6 @@ export function VideoPlayer({
     [duration]
   );
 
-  // Pointer Down (Press, hold & slide tracker)
   const handleTimelinePointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
     if (!timelineRef.current || !videoRef.current || duration === 0) return;
     (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
@@ -229,14 +646,12 @@ export function VideoPlayer({
     wasPlayingBeforeScrubRef.current = !videoRef.current.paused;
 
     safePause();
-    setIsBuffering(true);
 
     const targetTime = getTimeFromClientX(e.clientX);
     videoRef.current.currentTime = targetTime;
     setCurrentTime(targetTime);
   };
 
-  // Pointer Move (Scrubbing / Dragging tracker)
   const handleTimelinePointerMove = (e: React.PointerEvent<HTMLDivElement>) => {
     if (!timelineRef.current || duration === 0) return;
     const rect = timelineRef.current.getBoundingClientRect();
@@ -252,46 +667,102 @@ export function VideoPlayer({
     }
   };
 
-  // Pointer Up (Release scrubber)
   const handleTimelinePointerUp = (e: React.PointerEvent<HTMLDivElement>) => {
     if (!isScrubbingRef.current) return;
     try {
       (e.currentTarget as HTMLElement).releasePointerCapture(e.pointerId);
-    } catch {}
+    } catch {
+      // Ignored
+    }
     isScrubbingRef.current = false;
     setIsScrubbing(false);
 
-    if (wasPlayingBeforeScrubRef.current && videoRef.current) {
+    if (wasPlayingBeforeScrubRef.current) {
       safePlay();
-    }
-  };
-
-  const handleTimelineMouseLeave = () => {
-    if (!isScrubbingRef.current) {
-      setHoverTime(null);
-      setHoverX(null);
     }
   };
 
   const currentFrame = Math.floor(currentTime * fps);
   const progressPercent = duration > 0 ? (currentTime / duration) * 100 : 0;
 
+  // Filter comments for timeline markers and viewport annotations based on the 3-way toggle (all / active / resolved)
+  const filteredComments = useMemo(() => {
+    return comments.filter((c) => {
+      // Exclude reply comments from having duplicate markers on timeline
+      if (c.parentCommentId) return false;
+      if (currentFilter === 'active') return !c.resolved;
+      if (currentFilter === 'resolved') return !!c.resolved;
+      return true; // 'all'
+    });
+  }, [comments, currentFilter]);
+
+  // Spatial pin / drawing comments visible near current timestamp (during playback: 3.0s window; paused: 3.0s window) or active comment
+  const visibleComments = useMemo(() => {
+    return comments.filter((c) => {
+      if (c.parentCommentId) return false;
+
+      // Filter check (activeCommentId can be viewed even if filter is different when clicked in sidebar)
+      if (currentFilter === 'active' && c.resolved && activeCommentId !== c._id) return false;
+      if (currentFilter === 'resolved' && !c.resolved && activeCommentId !== c._id) return false;
+
+      const isActive = activeCommentId === c._id;
+      // Range comments stay visible for their full timestamp -> timestampEnd span
+      const windowEnd = c.timestampEnd && c.timestampEnd > c.timestamp ? c.timestampEnd : c.timestamp + 2.8;
+      const isPlaybackActive = isPlaying && currentTime >= c.timestamp - 0.2 && currentTime <= windowEnd;
+      const isPausedActive =
+        !isPlaying &&
+        (c.timestampEnd && c.timestampEnd > c.timestamp
+          ? currentTime >= c.timestamp - 1.5 && currentTime <= c.timestampEnd + 1.5
+          : Math.abs(currentTime - c.timestamp) <= 1.5);
+      return isActive || isPlaybackActive || isPausedActive;
+    });
+  }, [comments, currentFilter, currentTime, activeCommentId, isPlaying]);
+
+  // Live range end while the composer's range mode is on — the current playhead,
+  // as long as it's moved at least 0.5s away from the pin's start (server also enforces this)
+  const liveRangeEnd =
+    isRangeMode && activeDraftPin && Math.abs(currentTime - activeDraftPin.timestamp) >= 0.5
+      ? currentTime
+      : null;
+
+  // Find active comment details for the on-screen card popup
+  const activeComment = useMemo(() => {
+    if (!activeCommentId || activeCommentId === dismissedCalloutId) return null;
+    return comments.find((c) => c._id === activeCommentId) || null;
+  }, [activeCommentId, comments, dismissedCalloutId]);
+
+  const isActiveCommentAuthor =
+    !!currentUser &&
+    !!activeComment &&
+    (activeComment.userId?._id === currentUser.id ||
+      (activeComment.userId as unknown as string) === currentUser.id);
+
   return (
     <div
       ref={containerRef}
-      className="relative flex flex-col bg-zinc-950 rounded-2xl overflow-hidden border border-zinc-800/80 shadow-2xl group select-none"
+      className={`space-y-3 ${isFullscreen ? 'h-full w-full bg-zinc-950 flex flex-col justify-center p-3' : ''}`}
     >
-      {/* Video Viewport */}
       <div
-        className="relative aspect-video bg-black flex items-center justify-center cursor-pointer overflow-hidden"
-        onClick={togglePlay}
+        className="relative flex flex-col bg-zinc-950 rounded-2xl overflow-hidden border border-zinc-800/80 shadow-2xl group select-none"
+      >
+      {/* Video Viewport with Interactive Spatial Pin & Drawing Overlay */}
+      <div
+        ref={viewportRef}
+        onPointerDown={handleViewportPointerDown}
+        onPointerMove={handleViewportPointerMove}
+        onPointerUp={handleViewportPointerUp}
+        className={`relative aspect-video bg-black flex items-center justify-center overflow-hidden touch-none ${
+          !isPlaying && activeTool
+            ? 'cursor-crosshair'
+            : 'cursor-pointer'
+        }`}
       >
         <video
           ref={videoRef}
           src={src}
           preload="auto"
           playsInline
-          className="w-full h-full object-contain"
+          className="w-full h-full object-contain pointer-events-none"
           onTimeUpdate={() => {
             if (videoRef.current && !isScrubbingRef.current) {
               setCurrentTime(videoRef.current.currentTime);
@@ -326,7 +797,115 @@ export function VideoPlayer({
           }}
         />
 
-        {/* Buffering & Seeking Spinner Overlay */}
+        {/* SVG Drawing Layer for Real-Time and Saved Drawings */}
+        <svg
+          viewBox="0 0 100 100"
+          preserveAspectRatio="none"
+          className="absolute inset-0 w-full h-full pointer-events-none z-20"
+        >
+          {/* 1. Saved drawings for visible comments */}
+          {visibleComments.map((c) => {
+            const parsed = parseDrawingData(c.drawingData);
+            if (!parsed?.path) return null;
+
+            const isActive = activeCommentId === c._id;
+            const strokeW = parsed.width || 0.8;
+
+            return (
+              <g key={c._id} className="transition-all">
+                {/* Glow outline when active */}
+                {isActive && (
+                  <path
+                    d={parsed.path}
+                    fill="none"
+                    stroke={parsed.color || '#06b6d4'}
+                    strokeWidth={strokeW * 3}
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    opacity="0.6"
+                    className="animate-pulse"
+                  />
+                )}
+                {/* Dark high-contrast outer shadow stroke */}
+                <path
+                  d={parsed.path}
+                  fill="none"
+                  stroke="#000000"
+                  strokeWidth={strokeW * 1.8}
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  opacity="0.75"
+                />
+                {/* Main colored stroke */}
+                <path
+                  d={parsed.path}
+                  fill="none"
+                  stroke={parsed.color || '#06b6d4'}
+                  strokeWidth={strokeW}
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                />
+              </g>
+            );
+          })}
+
+          {/* 2. Draft drawing waiting for comment submission */}
+          {activeDraftPin?.drawingData && (
+            (() => {
+              const parsed = parseDrawingData(activeDraftPin.drawingData);
+              const strokeW = parsed?.width || drawStrokeWidth;
+              return parsed?.path ? (
+                <g>
+                  <path
+                    d={parsed.path}
+                    fill="none"
+                    stroke="#000000"
+                    strokeWidth={strokeW * 1.8}
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    opacity="0.8"
+                  />
+                  <path
+                    d={parsed.path}
+                    fill="none"
+                    stroke={parsed.color || '#06b6d4'}
+                    strokeWidth={strokeW}
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    className="animate-pulse"
+                  />
+                </g>
+              ) : null;
+            })()
+          )}
+
+          {/* 3. Live active drawing / shape stroke in progress */}
+          {currentStroke.length > 0 && activeTool && (
+            <g>
+              <path
+                d={generateShapeSvgPath(activeTool, currentStroke)}
+                fill={activeTool === 'rectangle' || activeTool === 'circle' ? drawColor : 'none'}
+                fillOpacity={activeTool === 'rectangle' || activeTool === 'circle' ? '0.15' : '0'}
+                stroke="#000000"
+                strokeWidth={drawStrokeWidth * 1.8}
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                opacity="0.8"
+              />
+              <path
+                d={generateShapeSvgPath(activeTool, currentStroke)}
+                fill={activeTool === 'rectangle' || activeTool === 'circle' ? drawColor : 'none'}
+                fillOpacity={activeTool === 'rectangle' || activeTool === 'circle' ? '0.15' : '0'}
+                stroke={drawColor}
+                strokeWidth={drawStrokeWidth}
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              />
+            </g>
+          )}
+        </svg>
+
+        {/* Buffering Spinner Overlay */}
         {isBuffering && (
           <div className="absolute inset-0 bg-black/40 backdrop-blur-[2px] flex flex-col items-center justify-center pointer-events-none z-30 animate-in fade-in duration-150">
             <div className="p-3.5 rounded-2xl bg-zinc-900/90 border border-teal-500/30 shadow-2xl flex items-center gap-3">
@@ -336,11 +915,321 @@ export function VideoPlayer({
           </div>
         )}
 
-        {/* Center Play/Pause Overlay indicator on click */}
-        {!isPlaying && !isBuffering && (
-          <div className="absolute inset-0 bg-black/25 flex items-center justify-center pointer-events-none transition-opacity">
-            <div className="w-16 h-16 rounded-full bg-teal-600/90 text-white flex items-center justify-center shadow-xl backdrop-blur-sm transform transition hover:scale-110">
+        {/* Center Play/Resume Button when Paused and in Normal Mode */}
+        {!isPlaying && !isBuffering && !activeTool && !activeDraftPin && currentStroke.length === 0 && (
+          <div className="absolute inset-0 bg-black/20 flex items-center justify-center pointer-events-none z-20 transition-opacity">
+            <button
+              type="button"
+              className="w-16 h-16 rounded-full bg-teal-600/90 hover:bg-teal-500 text-white flex items-center justify-center shadow-2xl backdrop-blur-sm transform transition hover:scale-110 pointer-events-auto cursor-pointer"
+              onClick={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                togglePlay();
+              }}
+            >
               <Play className="w-7 h-7 fill-white translate-x-0.5" />
+            </button>
+          </div>
+        )}
+
+        {/* Draft Active Pin Marker on Video Frame */}
+        {activeDraftPin && (
+          <div
+            style={{ left: `${activeDraftPin.x}%`, top: `${activeDraftPin.y}%` }}
+            className="pin-interactive-element absolute -translate-x-1/2 -translate-y-1/2 z-40 pointer-events-none"
+          >
+            {/* Pulsing Pin Head */}
+            <div className="w-8 h-8 rounded-full bg-teal-500 text-zinc-950 flex items-center justify-center font-bold text-xs border-2 border-white shadow-2xl ring-4 ring-teal-500/40 animate-bounce">
+              {activeDraftPin.drawingData ? (
+                <Pencil className="w-4 h-4 fill-zinc-950" />
+              ) : (
+                <MapPin className="w-4 h-4 fill-zinc-950" />
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* Smart Clamped On-Screen Floating Composer for Draft Pin & Drawing */}
+        {activeDraftPin && (
+          <div
+            style={getClampedPopoverStyle(activeDraftPin.x, activeDraftPin.y)}
+            className="pin-interactive-element absolute z-50 animate-in zoom-in-95 duration-150 pointer-events-auto"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Popover Card */}
+            <div className="w-72 sm:w-80 p-3 rounded-2xl bg-zinc-900/98 border border-teal-500/60 shadow-2xl backdrop-blur-2xl z-50 text-xs space-y-2.5">
+              {/* Header */}
+              <div className="flex items-center justify-between border-b border-zinc-800 pb-2">
+                <div className="flex items-center gap-1.5 font-semibold text-teal-400">
+                  {liveRangeEnd !== null ? (
+                    <MessageSquare className="w-3.5 h-3.5 text-amber-400" />
+                  ) : activeDraftPin.drawingData ? (
+                    <Pencil className="w-3.5 h-3.5 text-purple-400" />
+                  ) : (
+                    <Crosshair className="w-3.5 h-3.5 text-teal-400" />
+                  )}
+                  <span>
+                    {liveRangeEnd !== null
+                      ? `Range: ${formatTimecode(Math.min(activeDraftPin.timestamp, liveRangeEnd))} → ${formatTimecode(Math.max(activeDraftPin.timestamp, liveRangeEnd))}`
+                      : activeDraftPin.drawingData
+                      ? `Drawing at ${formatTimecode(activeDraftPin.timestamp)}`
+                      : `Point at ${formatTimecode(activeDraftPin.timestamp)}`}
+                  </span>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setDraftPin(null)}
+                  className="p-1 rounded-lg text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800 transition-colors"
+                  title="Close"
+                >
+                  <X className="w-3.5 h-3.5" />
+                </button>
+              </div>
+
+              {/* Form */}
+              <form onSubmit={handleSubmitFloatingComposer} className="space-y-2">
+                {/* Time Range Toggle */}
+                <div className="flex items-center gap-1.5 flex-wrap">
+                  <button
+                    type="button"
+                    onClick={() => setIsRangeMode((prev) => !prev)}
+                    className={`flex items-center gap-1 px-2 py-1 rounded-lg text-[10px] font-medium border transition-colors ${
+                      isRangeMode
+                        ? 'bg-amber-500/10 border-amber-500/40 text-amber-400'
+                        : 'bg-zinc-950 border-zinc-800 text-zinc-400 hover:text-zinc-200'
+                    }`}
+                  >
+                    <Clock className="w-2.5 h-2.5" />
+                    {isRangeMode ? 'Time range on' : 'Add time range'}
+                  </button>
+
+                  {isRangeMode && (
+                    <>
+                      <span className="text-[10px] font-mono text-teal-400">
+                        Start {formatTimecode(activeDraftPin.timestamp)}
+                      </span>
+                      <span className="text-zinc-600 text-[10px]">→</span>
+                      <span className={`text-[10px] font-mono ${liveRangeEnd !== null ? 'text-amber-400' : 'text-zinc-500'}`}>
+                        End {formatTimecode(currentTime)}
+                      </span>
+                    </>
+                  )}
+                </div>
+
+                {isRangeMode && liveRangeEnd === null && (
+                  <p className="text-[10px] text-zinc-500">
+                    Move the playhead on the timeline below to set an end point — it will be saved as the range end automatically.
+                  </p>
+                )}
+
+                {allowGuestComments && (
+                  <input
+                    type="text"
+                    placeholder="Your Name (Optional)"
+                    value={composerGuestName}
+                    onChange={(e) => setComposerGuestName(e.target.value)}
+                    className="w-full px-2.5 py-1 rounded-lg bg-zinc-950 border border-zinc-800 text-zinc-200 placeholder-zinc-500 text-xs focus:outline-none focus:border-teal-500"
+                  />
+                )}
+
+                <textarea
+                  rows={2}
+                  autoFocus
+                  placeholder={
+                    activeDraftPin.drawingData
+                      ? 'Add feedback for your drawing...'
+                      : 'Add feedback for this exact pinned point...'
+                  }
+                  value={composerText}
+                  onChange={(e) => setComposerText(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' && !e.shiftKey) {
+                      e.preventDefault();
+                      handleSubmitFloatingComposer(e);
+                    }
+                  }}
+                  className="w-full p-2.5 rounded-xl bg-zinc-950 border border-zinc-800 text-zinc-200 placeholder-zinc-500 text-xs focus:outline-none focus:border-teal-500 resize-none shadow-inner"
+                />
+
+                <div className="flex items-center justify-between pt-1">
+                  <span className="text-[10px] text-zinc-500 font-mono">Press Enter ↵</span>
+                  <div className="flex items-center gap-1.5">
+                    <button
+                      type="button"
+                      onClick={() => setDraftPin(null)}
+                      className="px-2.5 py-1 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-zinc-300 font-medium text-xs transition-colors"
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      type="submit"
+                      disabled={!composerText.trim() || isSubmitting}
+                      className="px-3 py-1 rounded-lg bg-teal-600 hover:bg-teal-500 disabled:opacity-50 text-white font-semibold text-xs flex items-center gap-1 shadow-md shadow-teal-600/30 transition-all"
+                    >
+                      {isSubmitting ? <Loader2 className="w-3 h-3 animate-spin" /> : <Send className="w-3 h-3" />}
+                      <span>Comment</span>
+                    </button>
+                  </div>
+                </div>
+              </form>
+            </div>
+          </div>
+        )}
+
+        {/* Saved Visual Pins on Video Frame */}
+        {visibleComments.map((pin) => {
+          if (typeof pin.x !== 'number' || typeof pin.y !== 'number') return null;
+          const isActive = activeCommentId === pin._id;
+          const authorInitial = (pin.userId?.name || pin.guestName || 'R')[0].toUpperCase();
+
+          return (
+            <div
+              key={pin._id}
+              onClick={(e) => {
+                e.stopPropagation();
+                if (onSelectComment) onSelectComment(pin._id, pin.timestamp);
+                setDismissedCalloutId(null);
+              }}
+              style={{ left: `${pin.x}%`, top: `${pin.y}%` }}
+              className={`pin-interactive-element absolute -translate-x-1/2 -translate-y-1/2 z-30 group/pin cursor-pointer transition-all duration-200 ${
+                isActive ? 'scale-125 z-40' : 'hover:scale-110'
+              }`}
+            >
+              {/* Pulsing ring for pin */}
+              <div
+                className={`absolute inset-0 rounded-full animate-ping opacity-60 pointer-events-none ${
+                  isActive ? 'bg-cyan-400' : 'bg-teal-400'
+                }`}
+              />
+
+              {/* Pin Badge Circle */}
+              <div
+                className={`w-8 h-8 rounded-full flex items-center justify-center font-bold text-xs shadow-2xl border-2 transition-all ${
+                  pin.resolved
+                    ? 'bg-emerald-600 text-white border-white ring-4 ring-emerald-500/40'
+                    : isActive
+                    ? 'bg-cyan-500 text-zinc-950 border-white ring-4 ring-cyan-500/50 shadow-cyan-500/50'
+                    : pin.drawingData
+                    ? 'bg-purple-600 text-white border-white ring-4 ring-purple-500/40 shadow-purple-600/40'
+                    : 'bg-teal-600 text-white border-white ring-4 ring-teal-500/40 shadow-teal-600/40'
+                }`}
+              >
+                {pin.resolved ? <CheckCircle2 className="w-4 h-4" /> : <span>{authorInitial}</span>}
+              </div>
+
+              {/* Comment Callout Bubble (Visible both when paused and playing so reviewer can read immediately) */}
+              {!isActive && (
+                <div
+                  className={`absolute top-1/2 -translate-y-1/2 min-w-[160px] max-w-[280px] p-2.5 rounded-2xl bg-zinc-900/98 border border-teal-500/80 shadow-[0_10px_35px_rgba(0,0,0,0.8)] backdrop-blur-xl text-xs animate-in fade-in duration-200 pointer-events-auto z-40 ${
+                    pin.x > 60 ? 'right-full mr-3' : 'left-full ml-3'
+                  }`}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    if (onSelectComment) onSelectComment(pin._id, pin.timestamp);
+                  }}
+                >
+                  <div className="flex items-center justify-between gap-1 text-[10px] mb-1">
+                    <span className="font-semibold text-teal-400 truncate max-w-[120px]">
+                      {pin.userId?.name || pin.guestName || 'Reviewer'}
+                    </span>
+                    <span className="font-mono text-zinc-400">{formatTimecode(pin.timestamp)}</span>
+                  </div>
+                  <p className="text-zinc-100 line-clamp-3 text-xs font-normal leading-snug">{pin.text}</p>
+                </div>
+              )}
+            </div>
+          );
+        })}
+
+
+        {/* Active Comment On-Screen Popover Card (Opened from Sidebar / Pin Click) */}
+        {activeComment && (activeComment.x !== undefined || activeComment.drawingData) && (
+          <div
+            style={getClampedPopoverStyle(activeComment.x || 50, activeComment.y || 50)}
+            className="pin-interactive-element absolute z-50 animate-in zoom-in-95 duration-200 pointer-events-auto"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Popover Card */}
+            <div className="w-72 sm:w-80 p-3.5 rounded-2xl bg-zinc-900/98 border border-teal-500/60 shadow-2xl backdrop-blur-2xl z-50 text-xs space-y-2.5">
+              {/* Header */}
+              <div className="flex items-center justify-between border-b border-zinc-800 pb-2">
+                <div className="flex items-center gap-2">
+                  <div className="w-5 h-5 rounded-full bg-teal-500/20 text-teal-300 flex items-center justify-center font-bold text-[10px]">
+                    {(activeComment.userId?.name || activeComment.guestName || 'R')[0].toUpperCase()}
+                  </div>
+                  <span className="font-semibold text-zinc-200 truncate max-w-[120px]">
+                    {activeComment.userId?.name || activeComment.guestName || 'Reviewer'}
+                  </span>
+                </div>
+                <div className="flex items-center gap-1.5">
+                  <span className="font-mono text-[10px] text-teal-400">
+                    {formatTimecode(activeComment.timestamp)}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => setDismissedCalloutId(activeComment._id)}
+                    className="p-1 rounded-lg text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800 transition-colors"
+                    title="Close popup"
+                  >
+                    <X className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+              </div>
+
+              {/* Comment Text */}
+              <p className="text-zinc-100 font-normal leading-relaxed">{activeComment.text}</p>
+
+              {/* Footer status */}
+              <div className="flex items-center justify-between pt-1 text-[10px] text-zinc-500 border-t border-zinc-800/60">
+                <span>{new Date(activeComment.createdAt).toLocaleDateString()}</span>
+                {activeComment.resolved ? (
+                  <span className="text-emerald-400 flex items-center gap-1 font-semibold">
+                    <CheckCircle2 className="w-3 h-3" /> Resolved
+                  </span>
+                ) : (
+                  <span className="text-amber-400 font-semibold">• Active Feedback</span>
+                )}
+              </div>
+
+              {/* Actions: Resolve / Reopen & Delete (author only) */}
+              {(onResolveComment || (isActiveCommentAuthor && onDeleteComment)) && (
+                <div className="flex items-center justify-end gap-1.5 pt-1 border-t border-zinc-800/60">
+                  {onResolveComment && (
+                    <button
+                      type="button"
+                      onClick={() => onResolveComment(activeComment._id, !activeComment.resolved)}
+                      className={`flex items-center gap-1 px-2 py-1 rounded-lg text-[10px] font-medium border transition-colors ${
+                        activeComment.resolved
+                          ? 'border-zinc-700 bg-zinc-800 text-zinc-300 hover:bg-rose-500/10 hover:border-rose-500/30 hover:text-rose-400'
+                          : 'border-emerald-500/30 bg-emerald-500/10 text-emerald-400 hover:bg-emerald-500/20'
+                      }`}
+                    >
+                      {activeComment.resolved ? (
+                        <>
+                          <RotateCcw className="w-2.5 h-2.5" /> Reopen
+                        </>
+                      ) : (
+                        <>
+                          <Check className="w-2.5 h-2.5" /> Resolve
+                        </>
+                      )}
+                    </button>
+                  )}
+                  {isActiveCommentAuthor && onDeleteComment && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const id = activeComment._id;
+                        setDismissedCalloutId(id);
+                        onDeleteComment(id);
+                      }}
+                      className="flex items-center gap-1 px-2 py-1 rounded-lg text-[10px] font-medium border border-zinc-700 bg-zinc-800 text-zinc-300 hover:bg-rose-500/10 hover:border-rose-500/30 hover:text-rose-400 transition-colors"
+                    >
+                      <Trash2 className="w-2.5 h-2.5" /> Delete
+                    </button>
+                  )}
+                </div>
+              )}
             </div>
           </div>
         )}
@@ -355,7 +1244,12 @@ export function VideoPlayer({
           onPointerMove={handleTimelinePointerMove}
           onPointerUp={handleTimelinePointerUp}
           onPointerCancel={handleTimelinePointerUp}
-          onMouseLeave={handleTimelineMouseLeave}
+          onMouseLeave={() => {
+            if (!isScrubbingRef.current) {
+              setHoverTime(null);
+              setHoverX(null);
+            }
+          }}
           className="relative h-7 flex items-center cursor-pointer group/timeline touch-none"
         >
           {/* Track background */}
@@ -365,6 +1259,34 @@ export function VideoPlayer({
               className="h-full bg-gradient-to-r from-teal-600 to-cyan-500 rounded-full"
               style={{ width: `${progressPercent}%` }}
             />
+
+            {/* Range Selection Highlight (from the composer's Start → live playhead) */}
+            {activeDraftPin && liveRangeEnd !== null && duration > 0 && (
+              <div
+                className="absolute top-0 h-full bg-teal-400/40 border-x-2 border-teal-400"
+                style={{
+                  left: `${(Math.min(activeDraftPin.timestamp, liveRangeEnd) / duration) * 100}%`,
+                  width: `${(Math.abs(liveRangeEnd - activeDraftPin.timestamp) / duration) * 100}%`,
+                }}
+              />
+            )}
+
+            {/* Range spans for existing range comments */}
+            {filteredComments.map((c) => {
+              if (!c.timestampEnd || duration === 0) return null;
+              return (
+                <div
+                  key={`range-${c._id}`}
+                  className={`absolute top-0 h-full opacity-50 ${
+                    c.resolved ? 'bg-emerald-500' : 'bg-amber-400'
+                  }`}
+                  style={{
+                    left: `${(c.timestamp / duration) * 100}%`,
+                    width: `${((c.timestampEnd - c.timestamp) / duration) * 100}%`,
+                  }}
+                />
+              );
+            })}
           </div>
 
           {/* Scrubber Playhead Handle */}
@@ -377,10 +1299,12 @@ export function VideoPlayer({
 
           {/* Comment Markers on Timeline */}
           {duration > 0 &&
-            comments.map((comment) => {
+            filteredComments.map((comment) => {
               const markerPos = (comment.timestamp / duration) * 100;
               const isActive = activeCommentId === comment._id;
               const isResolved = comment.resolved;
+              const hasDrawing = !!comment.drawingData;
+              const hasSpatialPin = comment.x !== undefined && comment.y !== undefined;
 
               return (
                 <div
@@ -388,6 +1312,7 @@ export function VideoPlayer({
                   onClick={(e) => {
                     e.stopPropagation();
                     if (onSelectComment) onSelectComment(comment._id, comment.timestamp);
+                    setDismissedCalloutId(null);
                   }}
                   className={`absolute top-1/2 -translate-y-1/2 -translate-x-1/2 z-20 group/marker transition-transform cursor-pointer ${
                     isActive ? 'scale-150 z-30' : 'hover:scale-125'
@@ -395,19 +1320,29 @@ export function VideoPlayer({
                   style={{ left: `${markerPos}%` }}
                 >
                   <div
-                    className={`w-3 h-3 rounded-full border-2 border-zinc-950 shadow-md ${
-                      isResolved
-                        ? 'bg-emerald-500'
-                        : isActive
-                        ? 'bg-cyan-400 ring-2 ring-teal-400/50'
-                        : 'bg-amber-400'
+                    className={`rounded-full shadow-md transition-all ${
+                      hasDrawing
+                        ? 'w-3.5 h-3.5 rotate-45 border-2 border-zinc-950 ' +
+                          (isResolved ? 'bg-emerald-500' : isActive ? 'bg-purple-400 ring-2 ring-purple-400/50' : 'bg-purple-500')
+                        : hasSpatialPin
+                        ? 'w-3.5 h-3.5 rotate-45 border-2 border-zinc-950 ' +
+                          (isResolved ? 'bg-emerald-500' : isActive ? 'bg-cyan-400 ring-2 ring-cyan-400/50' : 'bg-teal-400')
+                        : 'w-3 h-3 border-2 border-zinc-950 ' +
+                          (isResolved ? 'bg-emerald-500' : isActive ? 'bg-cyan-400 ring-2 ring-teal-400/50' : 'bg-amber-400')
                     }`}
                   />
 
                   {/* Marker Tooltip Preview on hover */}
                   <div className="hidden group-hover/marker:block absolute bottom-6 left-1/2 -translate-x-1/2 w-48 p-2 rounded-xl bg-zinc-900 border border-zinc-700 shadow-2xl text-[11px] text-zinc-200 pointer-events-none z-50 animate-in fade-in zoom-in-95">
                     <div className="flex items-center justify-between font-semibold text-[10px] text-zinc-400 mb-1">
-                      <span>{comment.userId?.name || comment.guestName || 'Reviewer'}</span>
+                      <span className="flex items-center gap-1">
+                        {hasDrawing ? (
+                          <Pencil className="w-2.5 h-2.5 text-purple-400" />
+                        ) : hasSpatialPin ? (
+                          <MapPin className="w-2.5 h-2.5 text-teal-400" />
+                        ) : null}
+                        <span>{comment.userId?.name || comment.guestName || 'Reviewer'}</span>
+                      </span>
                       <span className="font-mono text-teal-400">{formatTimecode(comment.timestamp)}</span>
                     </div>
                     <p className="line-clamp-2 text-zinc-300">{comment.text}</p>
@@ -428,13 +1363,13 @@ export function VideoPlayer({
         </div>
 
         {/* Lower Controller Bar */}
-        <div className="flex items-center justify-between gap-4">
+        <div className="flex items-center justify-between gap-3 flex-wrap">
           {/* Left Controls: Play, Step Frames, Timecode */}
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-2 sm:gap-3 shrink-0">
             {/* Play / Pause */}
             <button
               onClick={togglePlay}
-              className="p-2 rounded-xl bg-teal-600 hover:bg-teal-500 text-white shadow-md shadow-teal-600/20 transition-all"
+              className="p-2 rounded-xl bg-teal-600 hover:bg-teal-500 text-white shadow-md shadow-teal-600/20 transition-all shrink-0 cursor-pointer"
               title={isPlaying ? 'Pause (Space)' : 'Play (Space)'}
             >
               {isPlaying ? <Pause className="w-4 h-4 fill-white" /> : <Play className="w-4 h-4 fill-white" />}
@@ -443,7 +1378,7 @@ export function VideoPlayer({
             {/* Frame Step Back */}
             <button
               onClick={() => stepFrames(-1)}
-              className="p-1.5 rounded-lg text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800 transition-colors"
+              className="p-1.5 rounded-lg text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800 transition-colors shrink-0 cursor-pointer"
               title="Previous Frame (Left Arrow / J)"
             >
               <ChevronLeft className="w-4 h-4" />
@@ -452,7 +1387,7 @@ export function VideoPlayer({
             {/* Frame Step Forward */}
             <button
               onClick={() => stepFrames(1)}
-              className="p-1.5 rounded-lg text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800 transition-colors"
+              className="p-1.5 rounded-lg text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800 transition-colors shrink-0 cursor-pointer"
               title="Next Frame (Right Arrow / L)"
             >
               <ChevronRight className="w-4 h-4" />
@@ -461,7 +1396,7 @@ export function VideoPlayer({
             {/* Timecode and Frame Number Display */}
             <button
               onClick={() => setShowSMPTE(!showSMPTE)}
-              className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-zinc-900 border border-zinc-800 text-xs font-mono text-zinc-300 hover:border-zinc-700 transition-colors"
+              className="flex items-center gap-1 px-2.5 py-1 rounded-lg bg-zinc-900 border border-zinc-800 text-xs font-mono text-zinc-300 hover:border-zinc-700 transition-colors shrink-0 cursor-pointer"
               title="Click to toggle SMPTE timecode / standard"
             >
               <span className="font-semibold text-teal-400">
@@ -471,27 +1406,44 @@ export function VideoPlayer({
               <span className="text-zinc-500">
                 {showSMPTE ? formatSMPTETimecode(duration, fps) : formatDuration(duration)}
               </span>
-              <span className="text-[10px] text-zinc-500 ml-1">({currentFrame}f)</span>
+              <span className="text-[10px] text-zinc-500 ml-0.5">({currentFrame}f)</span>
             </button>
           </div>
 
-          {/* Center: Quick Add Comment at current frame */}
-          {onAddCommentAtTime && (
-            <button
-              onClick={() => onAddCommentAtTime(currentTime, currentFrame)}
-              className="hidden sm:flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-zinc-900 hover:bg-teal-600/20 border border-zinc-800 hover:border-teal-500/40 text-xs font-semibold text-zinc-300 hover:text-teal-300 transition-all shadow-sm"
-              title="Leave timestamped comment (C)"
-            >
-              <MessageSquarePlus className="w-3.5 h-3.5 text-teal-400" />
-              <span>Comment at {formatTimecode(currentTime)}</span>
-            </button>
-          )}
+          {/* Center 3-Way Annotation Filter Switch on Video Canvas */}
+          <div className="flex items-center bg-zinc-900 p-1 rounded-xl border border-zinc-800 shrink-0 text-xs">
+            {(['all', 'active', 'resolved'] as const).map((mode) => (
+              <button
+                key={mode}
+                type="button"
+                onClick={() => handleFilterChange(mode)}
+                className={`px-2.5 py-0.5 rounded-lg text-[10px] font-medium transition-all cursor-pointer ${
+                  currentFilter === mode
+                    ? mode === 'resolved'
+                      ? 'bg-emerald-600 text-white shadow-sm font-semibold'
+                      : mode === 'active'
+                      ? 'bg-amber-600 text-white shadow-sm font-semibold'
+                      : 'bg-teal-600 text-white shadow-sm font-semibold'
+                    : 'text-zinc-400 hover:text-zinc-200'
+                }`}
+                title={`Show ${
+                  mode === 'all'
+                    ? 'all annotations'
+                    : mode === 'active'
+                    ? 'unresolved annotations only'
+                    : 'resolved annotations only'
+                } on video`}
+              >
+                {mode === 'all' ? 'All' : mode === 'active' ? 'Unresolved' : 'Resolved'}
+              </button>
+            ))}
+          </div>
 
           {/* Right Controls: Speed, Volume, Fullscreen */}
-          <div className="flex items-center gap-2.5">
+          <div className="flex items-center gap-2 shrink-0">
             {/* Speed Selector */}
-            <div className="relative group/speed">
-              <button className="px-2 py-1 rounded-lg bg-zinc-900 border border-zinc-800 text-xs font-mono text-zinc-400 hover:text-zinc-200 transition-colors">
+            <div className="relative group/speed shrink-0">
+              <button className="px-2 py-1 rounded-lg bg-zinc-900 border border-zinc-800 text-xs font-mono text-zinc-400 hover:text-zinc-200 transition-colors cursor-pointer">
                 {playbackSpeed}x
               </button>
               <div className="hidden group-hover/speed:flex absolute bottom-full right-0 mb-1 flex-col bg-zinc-900 border border-zinc-800 rounded-xl p-1 shadow-2xl z-50">
@@ -502,7 +1454,7 @@ export function VideoPlayer({
                       setPlaybackSpeed(spd);
                       if (videoRef.current) videoRef.current.playbackRate = spd;
                     }}
-                    className={`px-3 py-1 text-xs font-mono rounded-lg text-left transition-colors ${
+                    className={`px-3 py-1 text-xs font-mono rounded-lg text-left transition-colors cursor-pointer ${
                       playbackSpeed === spd ? 'bg-teal-600 text-white' : 'text-zinc-400 hover:bg-zinc-800'
                     }`}
                   >
@@ -513,14 +1465,14 @@ export function VideoPlayer({
             </div>
 
             {/* Volume */}
-            <div className="flex items-center gap-1.5">
+            <div className="flex items-center gap-1.5 shrink-0">
               <button
                 onClick={() => {
                   const nextMuted = !isMuted;
                   setIsMuted(nextMuted);
                   if (videoRef.current) videoRef.current.muted = nextMuted;
                 }}
-                className="p-1.5 text-zinc-400 hover:text-zinc-200 rounded-lg hover:bg-zinc-800 transition-colors"
+                className="p-1.5 text-zinc-400 hover:text-zinc-200 rounded-lg hover:bg-zinc-800 transition-colors cursor-pointer"
                 title="Mute / Unmute (M)"
               >
                 {isMuted || volume === 0 ? <VolumeX className="w-4 h-4" /> : <Volume2 className="w-4 h-4" />}
@@ -540,18 +1492,191 @@ export function VideoPlayer({
                     videoRef.current.muted = false;
                   }
                 }}
-                className="w-16 h-1 bg-zinc-800 accent-teal-500 rounded-lg cursor-pointer"
+                className="w-14 sm:w-16 h-1 bg-zinc-800 accent-teal-500 rounded-lg cursor-pointer"
               />
             </div>
 
             {/* Fullscreen */}
             <button
               onClick={toggleFullscreen}
-              className="p-1.5 text-zinc-400 hover:text-zinc-200 rounded-lg hover:bg-zinc-800 transition-colors"
+              className="p-1.5 text-zinc-400 hover:text-zinc-200 rounded-lg hover:bg-zinc-800 transition-colors shrink-0 cursor-pointer"
               title="Fullscreen (F)"
             >
               {isFullscreen ? <Minimize2 className="w-4 h-4" /> : <Maximize2 className="w-4 h-4" />}
             </button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+      {/* Dedicated Shapes & Annotation Studio Toolbar (Located directly where shortcuts was) */}
+      <div className="p-2.5 sm:p-3 rounded-2xl bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-800/80 shadow-md flex items-center justify-between gap-3 flex-wrap">
+        {/* Left: Tools & Shapes Selection */}
+        <div className="flex items-center gap-2 flex-wrap">
+          <div className="flex items-center bg-slate-100 dark:bg-zinc-950 p-1 rounded-xl border border-slate-200 dark:border-zinc-800 gap-0.5">
+            {/* Point Pin */}
+            <button
+              type="button"
+              onClick={() => {
+                setActiveTool((prev) => (prev === 'pin' ? null : 'pin'));
+                if (isPlaying) safePause();
+              }}
+              className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
+                activeTool === 'pin'
+                  ? 'bg-teal-600 text-white shadow-md shadow-teal-600/30'
+                  : 'text-slate-600 dark:text-zinc-400 hover:text-slate-900 dark:hover:text-zinc-200'
+              }`}
+              title="Point Pin Tool (P)"
+            >
+              <MapPin className="w-3.5 h-3.5" />
+              <span>Pin</span>
+            </button>
+
+            {/* Freehand Pen */}
+            <button
+              type="button"
+              onClick={() => {
+                setActiveTool((prev) => (prev === 'draw' ? null : 'draw'));
+                if (isPlaying) safePause();
+              }}
+              className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
+                activeTool === 'draw'
+                  ? 'bg-teal-600 text-white shadow-md shadow-teal-600/30'
+                  : 'text-slate-600 dark:text-zinc-400 hover:text-slate-900 dark:hover:text-zinc-200'
+              }`}
+              title="Freehand Pen (D)"
+            >
+              <Pencil className="w-3.5 h-3.5" />
+              <span>Pen</span>
+            </button>
+
+            {/* Rectangle Box */}
+            <button
+              type="button"
+              onClick={() => {
+                setActiveTool((prev) => (prev === 'rectangle' ? null : 'rectangle'));
+                if (isPlaying) safePause();
+              }}
+              className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
+                activeTool === 'rectangle'
+                  ? 'bg-teal-600 text-white shadow-md shadow-teal-600/30'
+                  : 'text-slate-600 dark:text-zinc-400 hover:text-slate-900 dark:hover:text-zinc-200'
+              }`}
+              title="Rectangle Box (R)"
+            >
+              <Square className="w-3.5 h-3.5" />
+              <span>Rect</span>
+            </button>
+
+            {/* Circle / Ellipse */}
+            <button
+              type="button"
+              onClick={() => {
+                setActiveTool((prev) => (prev === 'circle' ? null : 'circle'));
+                if (isPlaying) safePause();
+              }}
+              className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
+                activeTool === 'circle'
+                  ? 'bg-teal-600 text-white shadow-md shadow-teal-600/30'
+                  : 'text-slate-600 dark:text-zinc-400 hover:text-slate-900 dark:hover:text-zinc-200'
+              }`}
+              title="Circle / Ellipse (O)"
+            >
+              <CircleIcon className="w-3.5 h-3.5" />
+              <span>Circle</span>
+            </button>
+
+            {/* Arrow Pointer */}
+            <button
+              type="button"
+              onClick={() => {
+                setActiveTool((prev) => (prev === 'arrow' ? null : 'arrow'));
+                if (isPlaying) safePause();
+              }}
+              className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
+                activeTool === 'arrow'
+                  ? 'bg-teal-600 text-white shadow-md shadow-teal-600/30'
+                  : 'text-slate-600 dark:text-zinc-400 hover:text-slate-900 dark:hover:text-zinc-200'
+              }`}
+              title="Arrow Pointer (A)"
+            >
+              <ArrowUpRight className="w-3.5 h-3.5" />
+              <span>Arrow</span>
+            </button>
+          </div>
+
+          {/* Color Palette */}
+          <div className="flex items-center gap-1 bg-slate-100 dark:bg-zinc-950 p-1.5 rounded-xl border border-slate-200 dark:border-zinc-800">
+            {DRAW_COLORS.map((c) => (
+              <button
+                key={c.hex}
+                type="button"
+                onClick={() => setDrawColor(c.hex)}
+                style={{ backgroundColor: c.hex }}
+                className={`w-4 h-4 rounded-full transition-transform cursor-pointer ${
+                  drawColor.toLowerCase() === c.hex.toLowerCase()
+                    ? 'scale-125 ring-2 ring-slate-900 dark:ring-white z-10'
+                    : 'hover:scale-110 opacity-70 hover:opacity-100'
+                }`}
+                title={c.name}
+              />
+            ))}
+
+            {/* Custom RGB Color Spectrum Input */}
+            <label
+              className={`relative w-4 h-4 rounded-full cursor-pointer flex items-center justify-center overflow-hidden border border-slate-300 dark:border-zinc-700 hover:scale-110 transition-transform ${
+                !DRAW_COLORS.some((c) => c.hex.toLowerCase() === drawColor.toLowerCase())
+                  ? 'ring-2 ring-slate-900 dark:ring-white z-10'
+                  : ''
+              }`}
+              title="Pick Custom RGB Color"
+              style={{
+                background:
+                  'conic-gradient(from 90deg, #ff0000, #ffff00, #00ff00, #00ffff, #0000ff, #ff00ff, #ff0000)',
+              }}
+            >
+              <input
+                type="color"
+                value={drawColor}
+                onChange={(e) => setDrawColor(e.target.value)}
+                className="opacity-0 absolute inset-0 w-full h-full cursor-pointer"
+              />
+            </label>
+          </div>
+
+          {/* Stroke Width Slider & Presets */}
+          <div className="hidden sm:flex items-center gap-1.5 bg-slate-100 dark:bg-zinc-950 px-2 py-1.5 rounded-xl border border-slate-200 dark:border-zinc-800">
+            <span className="text-[10px] text-slate-500 dark:text-zinc-400 font-medium">Stroke:</span>
+            <input
+              type="range"
+              min="0.2"
+              max="2.5"
+              step="0.1"
+              value={drawStrokeWidth}
+              onChange={(e) => setDrawStrokeWidth(parseFloat(e.target.value))}
+              className="w-14 h-1 bg-slate-300 dark:bg-zinc-700 accent-teal-500 rounded-lg cursor-pointer"
+              title={`Thickness: ${drawStrokeWidth.toFixed(1)}`}
+            />
+            <div
+              className="rounded-full shrink-0 border border-slate-900/20 dark:border-zinc-900 shadow-sm"
+              style={{
+                backgroundColor: drawColor,
+                width: `${Math.max(3, Math.min(12, drawStrokeWidth * 6))}px`,
+                height: `${Math.max(3, Math.min(12, drawStrokeWidth * 6))}px`,
+              }}
+            />
+          </div>
+        </div>
+
+        {/* Right: Keyboard Shortcuts Reference */}
+        <div className="flex items-center gap-2 text-[11px] text-slate-500 dark:text-zinc-500 shrink-0">
+          <div className="flex items-center gap-2 flex-wrap">
+            <span><kbd className="px-1 py-0.5 rounded bg-slate-200 dark:bg-zinc-800 font-mono text-[9px]">Space</kbd> Play</span>
+            <span><kbd className="px-1 py-0.5 rounded bg-slate-200 dark:bg-zinc-800 font-mono text-[9px]">P</kbd> Pin</span>
+            <span><kbd className="px-1 py-0.5 rounded bg-slate-200 dark:bg-zinc-800 font-mono text-[9px]">D</kbd> Pen</span>
+            <span><kbd className="px-1 py-0.5 rounded bg-slate-200 dark:bg-zinc-800 font-mono text-[9px]">R</kbd> Rect</span>
+            <span><kbd className="px-1 py-0.5 rounded bg-slate-200 dark:bg-zinc-800 font-mono text-[9px]">O</kbd> Circle</span>
+            <span><kbd className="px-1 py-0.5 rounded bg-slate-200 dark:bg-zinc-800 font-mono text-[9px]">A</kbd> Arrow</span>
           </div>
         </div>
       </div>

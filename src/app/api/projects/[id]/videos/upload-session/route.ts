@@ -25,15 +25,13 @@ export async function POST(
       return NextResponse.json({ error: 'Filename is required' }, { status: 400 });
     }
 
-    // Try using user's storage provider, or fallback to project owner's tokens
+    // Project owner's storage credentials MUST ALWAYS be used for all project video assets
     await connectDB();
-    let storage = getStorageProviderForUser(user);
-    if (!user.googleTokens?.accessToken && project.ownerId.toString() !== user._id.toString()) {
-      const owner = await User.findById(project.ownerId);
-      if (owner?.googleTokens?.accessToken) {
-        storage = getStorageProviderForUser(owner);
-      }
+    const projectOwner = await User.findById(project.ownerId);
+    if (!projectOwner) {
+      return NextResponse.json({ error: 'Project owner account not found' }, { status: 404 });
     }
+    const storage = getStorageProviderForUser(projectOwner);
 
     const origin = req.headers.get('origin') || req.nextUrl.origin || 'http://localhost:3000';
 

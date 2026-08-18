@@ -102,7 +102,13 @@ export async function PATCH(
       asset.currentVersionNumber = currentVersionNumber;
     }
 
-    if (status && ['Draft', 'In Review', 'Changes Requested', 'Approved'].includes(status)) {
+    if (status && ['Draft', 'In Review', 'Changes Requested', 'Approved', 'Updated'].includes(status)) {
+      if (userRole !== 'owner' && userRole !== 'reviewer') {
+        return NextResponse.json(
+          { error: 'Only reviewers or project owners can change the review approval status' },
+          { status: 403 }
+        );
+      }
       const oldStatus = asset.status;
       asset.status = status;
 
@@ -233,9 +239,10 @@ export async function DELETE(
       }
 
       // 1. Delete file from Google Drive
-      if (targetVersion.driveFileId && !targetVersion.driveFileId.startsWith('drive_')) {
+      if (targetVersion.driveFileId) {
         try {
-          await storage.delete(targetVersion.driveFileId);
+          const success = await storage.delete(targetVersion.driveFileId);
+          console.log(`Version v${targetVersionNumber} file (${targetVersion.driveFileId}) deletion status:`, success);
         } catch (driveErr) {
           console.warn(`Could not delete Drive file ${targetVersion.driveFileId}:`, driveErr);
         }
@@ -308,7 +315,7 @@ export async function DELETE(
     // Scenario B: Delete entire video asset and all its versions
     const allVersions = await VideoVersion.find({ assetId: id });
     for (const ver of allVersions) {
-      if (ver.driveFileId && !ver.driveFileId.startsWith('drive_')) {
+      if (ver.driveFileId) {
         try {
           await storage.delete(ver.driveFileId);
         } catch (driveErr) {

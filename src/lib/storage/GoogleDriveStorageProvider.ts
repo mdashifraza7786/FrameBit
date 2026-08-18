@@ -241,10 +241,20 @@ export class GoogleDriveStorageProvider implements StorageProvider {
 
   async delete(fileId: string): Promise<boolean> {
     try {
-      await this.drive.files.delete({ fileId });
+      // Ensure access token is refreshed/valid
+      await this.getAccessToken();
+      await this.drive.files.delete({
+        fileId,
+        supportsAllDrives: true,
+      });
+      console.log(`Successfully deleted file from Google Drive: ${fileId}`);
       return true;
-    } catch (err) {
-      console.error(`Failed to delete Google Drive file ${fileId}:`, err);
+    } catch (err: any) {
+      if (err?.code === 404 || err?.status === 404 || err?.response?.status === 404) {
+        console.log(`Google Drive file ${fileId} was already deleted / not found.`);
+        return true;
+      }
+      console.error(`Failed to delete Google Drive file ${fileId}:`, err?.message || err, err?.response?.data);
       return false;
     }
   }

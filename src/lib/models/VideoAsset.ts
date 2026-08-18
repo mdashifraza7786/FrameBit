@@ -1,6 +1,6 @@
 import mongoose, { Schema, Document, Model, Types } from 'mongoose';
 
-export type ReviewStatus = 'Draft' | 'In Review' | 'Changes Requested' | 'Approved';
+export type ReviewStatus = 'Draft' | 'In Review' | 'Changes Requested' | 'Approved' | 'Updated';
 
 export interface IVideoAsset extends Document {
   projectId: Types.ObjectId;
@@ -22,7 +22,7 @@ const VideoAssetSchema = new Schema<IVideoAsset>(
     thumbnailUrl: { type: String },
     status: {
       type: String,
-      enum: ['Draft', 'In Review', 'Changes Requested', 'Approved'],
+      enum: ['Draft', 'In Review', 'Changes Requested', 'Approved', 'Updated'],
       default: 'Draft',
     },
   },
@@ -31,5 +31,8 @@ const VideoAssetSchema = new Schema<IVideoAsset>(
 
 VideoAssetSchema.index({ projectId: 1, createdAt: -1 });
 
-export const VideoAsset: Model<IVideoAsset> =
-  mongoose.models.VideoAsset || mongoose.model<IVideoAsset>('VideoAsset', VideoAssetSchema);
+if (mongoose.models && mongoose.models.VideoAsset) {
+  delete (mongoose.models as any).VideoAsset;
+}
+
+export const VideoAsset: Model<IVideoAsset> = mongoose.model<IVideoAsset>('VideoAsset', VideoAssetSchema);

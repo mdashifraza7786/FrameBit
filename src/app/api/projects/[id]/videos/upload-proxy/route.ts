@@ -33,14 +33,13 @@ export async function POST(
       return NextResponse.json({ error: 'No video file provided' }, { status: 400 });
     }
 
+    // Project owner's storage credentials MUST ALWAYS be used for all project video assets
     await connectDB();
-    let storage = getStorageProviderForUser(user);
-    if (!user.googleTokens?.accessToken && project.ownerId.toString() !== user._id.toString()) {
-      const owner = await User.findById(project.ownerId);
-      if (owner?.googleTokens?.accessToken) {
-        storage = getStorageProviderForUser(owner);
-      }
+    const projectOwner = await User.findById(project.ownerId);
+    if (!projectOwner) {
+      return NextResponse.json({ error: 'Project owner account not found' }, { status: 404 });
     }
+    const storage = getStorageProviderForUser(projectOwner);
 
     // Convert Web File stream to Node Readable stream
     const arrayBuffer = await file.arrayBuffer();
@@ -68,7 +67,7 @@ export async function POST(
       }
       versionNumber = asset.currentVersionNumber + 1;
       asset.currentVersionNumber = versionNumber;
-      asset.status = 'In Review';
+      asset.status = 'Updated';
       if (thumbnailUrl) asset.thumbnailUrl = thumbnailUrl;
       await asset.save();
     } else {
@@ -115,7 +114,7 @@ export async function POST(
         type: 'version_uploaded',
         projectId: project._id,
         assetId: asset._id,
-        message: `${user.name} uploaded ${asset.name} (v${versionNumber}) for review`,
+        message: `${user.name} uploaded updated version (${asset.name} v${versionNumber}) for review`,
       });
     }
 
@@ -123,7 +122,20 @@ export async function POST(
       type: 'notification:created',
       projectId: project._id.toString(),
       assetId: asset._id.toString(),
-      data: { message: `New version v${versionNumber} uploaded for ${asset.name}` },
+      data: { message: `Updated version v${versionNumber} uploaded for ${asset.name}` },
+      actorId: user._id.toString(),
+      timestamp: new Date().toISOString(),
+    });
+
+    emitRealtimeEvent({
+      type: 'status:changed',
+      projectId: project._id.toString(),
+      assetId: asset._id.toString(),
+      data: {
+        assetId: asset._id.toString(),
+        status: asset.status,
+        updatedBy: user.name,
+      },
       actorId: user._id.toString(),
       timestamp: new Date().toISOString(),
     });

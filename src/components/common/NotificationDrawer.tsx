@@ -2,7 +2,16 @@
 
 import React, { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { Bell, CheckCheck, MessageSquare, CheckCircle2, Film, UserPlus } from 'lucide-react';
+import {
+  Bell,
+  CheckCheck,
+  MessageSquare,
+  CheckCircle2,
+  Film,
+  UserPlus,
+  ChevronRight,
+  Sparkles,
+} from 'lucide-react';
 import { NotificationData } from '@/lib/types';
 
 function formatRelativeTime(dateString: string) {
@@ -99,9 +108,14 @@ export function NotificationDrawer() {
 
     const projectId = typeof n.projectId === 'object' ? n.projectId?._id : n.projectId;
     const assetId = typeof n.assetId === 'object' ? n.assetId?._id : n.assetId;
+    const commentId = typeof n.commentId === 'object' ? n.commentId?._id : n.commentId;
 
     if (projectId && assetId) {
-      router.push(`/projects/${projectId}/videos/${assetId}`);
+      if (commentId) {
+        router.push(`/projects/${projectId}/videos/${assetId}?commentId=${commentId}`);
+      } else {
+        router.push(`/projects/${projectId}/videos/${assetId}`);
+      }
     } else if (projectId) {
       router.push(`/projects/${projectId}`);
     }
@@ -162,9 +176,10 @@ export function NotificationDrawer() {
               )}
             </div>
 
-            <div className="max-h-96 overflow-y-auto divide-y divide-slate-100 dark:divide-zinc-800/60">
+            {/* Fixed-size box — always the same height, content scrolls inside it */}
+            <div className="h-96 overflow-y-auto divide-y divide-slate-100 dark:divide-zinc-800/60">
               {notifications.length === 0 ? (
-                <div className="py-12 text-center text-slate-400 dark:text-zinc-500 text-xs">
+                <div className="h-full flex items-center justify-center text-center text-slate-400 dark:text-zinc-500 text-xs">
                   No notifications yet
                 </div>
               ) : (
@@ -172,24 +187,30 @@ export function NotificationDrawer() {
                   <div
                     key={n._id}
                     onClick={() => handleNotificationClick(n)}
-                    className={`p-3.5 flex items-start gap-3 hover:bg-slate-50 dark:hover:bg-zinc-800/60 cursor-pointer transition-colors ${
+                    className={`group p-3.5 flex items-start gap-3 hover:bg-slate-50 dark:hover:bg-zinc-800/60 cursor-pointer transition-colors ${
                       !n.read ? 'bg-teal-50/60 dark:bg-teal-950/20' : ''
                     }`}
                   >
-                    <div className="p-2 rounded-xl bg-slate-100 dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700/50 mt-0.5 shrink-0">
+                    <div className="p-2 rounded-xl bg-slate-100 dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700/50 mt-0.5 shrink-0 group-hover:border-teal-500/40 transition-colors">
                       {getIcon(n.type)}
                     </div>
-                    <div className="flex-1 min-w-0">
+                    <div className="flex-1 min-w-0 pr-1">
                       <p
-                        className={`text-xs leading-relaxed ${
+                        className={`text-xs leading-relaxed break-words ${
                           !n.read ? 'text-slate-900 dark:text-zinc-100 font-semibold' : 'text-slate-600 dark:text-zinc-400'
                         }`}
                       >
                         {n.message}
                       </p>
-                      <span className="text-[10px] text-slate-400 dark:text-zinc-500 mt-1 block font-mono">
-                        {formatRelativeTime(n.createdAt)}
-                      </span>
+                      <div className="flex items-center justify-between mt-1">
+                        <span className="text-[10px] text-slate-400 dark:text-zinc-500 font-mono">
+                          {formatRelativeTime(n.createdAt)}
+                        </span>
+                        <span className="text-[10px] font-medium text-teal-600 dark:text-teal-400 opacity-0 group-hover:opacity-100 transition-opacity flex items-center gap-0.5">
+                          <span>Open</span>
+                          <ChevronRight className="w-3 h-3" />
+                        </span>
+                      </div>
                     </div>
                     {!n.read && (
                       <div className="w-2 h-2 rounded-full bg-teal-500 shrink-0 mt-2 self-center ring-4 ring-teal-500/20" />

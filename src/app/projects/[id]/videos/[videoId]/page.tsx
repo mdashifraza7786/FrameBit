@@ -14,6 +14,10 @@ import {
   Info,
   Calendar,
   Layers,
+  MessageSquare,
+  PanelRightClose,
+  PanelRightOpen,
+  SlidersHorizontal,
 } from 'lucide-react';
 import { VideoPlayer } from '@/components/video/VideoPlayer';
 import { CommentSidebar } from '@/components/video/CommentSidebar';
@@ -21,6 +25,7 @@ import { StatusBadge } from '@/components/video/StatusBadge';
 import { VersionSelector } from '@/components/video/VersionSelector';
 import { UploadModal } from '@/components/video/UploadModal';
 import { ShareModal } from '@/components/video/ShareModal';
+import { VersionComparison } from '@/components/video/VersionComparison';
 import { VideoAssetData, VideoVersionData, CommentData, ProjectData, ReviewStatus } from '@/lib/types';
 
 function VideoReviewContent({
@@ -45,6 +50,10 @@ function VideoReviewContent({
 
   const [uploadVersionModalOpen, setUploadVersionModalOpen] = useState(false);
   const [shareModalOpen, setShareModalOpen] = useState(false);
+  const [compareModalOpen, setCompareModalOpen] = useState(false);
+  const [draftPin, setDraftPin] = useState<{ x: number; y: number; timestamp: number; drawingData?: string } | null>(null);
+  const [annotationFilter, setAnnotationFilter] = useState<'all' | 'active' | 'resolved'>('all');
+  const [commentSidebarOpen, setCommentSidebarOpen] = useState(true);
 
   const fetchVideoDetails = useCallback(async () => {
     try {
@@ -57,8 +66,15 @@ function VideoReviewContent({
         setComments(data.comments || []);
         setUserRole(data.userRole || 'reviewer');
 
-        // Check if version was specified in query or default to latest
-        const initialVer = data.asset.currentVersionNumber || 1;
+        // Automatically default to the highest / latest available version number
+        const versionList: VideoVersionData[] = data.versions || [];
+        const latestVer =
+          versionList.length > 0
+            ? Math.max(...versionList.map((v) => v.versionNumber))
+            : data.asset?.currentVersionNumber || 1;
+
+        const vParam = searchParams.get('v');
+        const initialVer = vParam ? parseInt(vParam, 10) : latestVer;
         setCurrentVersionNumber(initialVer);
 
         // Check timestamp in url (?t=12.5)
@@ -102,6 +118,9 @@ function VideoReviewContent({
         } else if (payload.type === 'status:changed') {
           setAsset((prev) => (prev ? { ...prev, status: payload.data.status } : null));
         } else if (payload.type === 'version:created') {
+          if (payload.data?.version?.versionNumber) {
+            setCurrentVersionNumber(payload.data.version.versionNumber);
+          }
           fetchVideoDetails();
         }
       } catch {
@@ -117,7 +136,11 @@ function VideoReviewContent({
     text: string,
     timestamp: number,
     parentCommentId?: string,
-    authorName?: string
+    authorName?: string,
+    x?: number,
+    y?: number,
+    drawingData?: string,
+    timestampEnd?: number
   ) => {
     try {
       const res = await fetch(`/api/videos/${videoId}/comments`, {
@@ -126,9 +149,13 @@ function VideoReviewContent({
         body: JSON.stringify({
           text,
           timestamp,
+          timestampEnd,
           versionNumber: currentVersionNumber,
           parentCommentId,
           authorName,
+          x,
+          y,
+          drawingData,
         }),
       });
 
@@ -252,6 +279,8 @@ function VideoReviewContent({
   };
 
   const canUpload = userRole === 'owner' || userRole === 'editor';
+  const canChangeStatus = userRole === 'owner' || userRole === 'reviewer';
+  const canShare = userRole === 'owner' || userRole === 'reviewer';
   const streamSrc = `/api/videos/${videoId}/stream?version=${currentVersionNumber}`;
 
   if (loading) {
@@ -300,95 +329,105 @@ function VideoReviewContent({
 
           {/* Right Action Bar */}
           <div className="flex items-center gap-3 shrink-0">
-            {/* Review Status & Actions */}
+            {/* Compare Versions Button (only if 2+ versions) */}
+            {versions.length >= 2 && (
+              <button
+                onClick={() => setCompareModalOpen(true)}
+                className="px-3.5 py-2 rounded-xl bg-white dark:bg-zinc-900 hover:bg-slate-100 dark:hover:bg-zinc-800 border border-slate-300 dark:border-zinc-700/80 text-xs font-semibold text-slate-700 dark:text-zinc-200 flex items-center gap-2 transition-all shadow-sm"
+              >
+                <SlidersHorizontal className="w-4 h-4 text-purple-600 dark:text-purple-400" />
+                <span>Compare</span>
+              </button>
+            )}
+
+            {/* Review Status & Actions (Only for Owner & Reviewer) */}
             <StatusBadge
               status={asset.status}
-              canChangeStatus={true}
+              canChangeStatus={canChangeStatus}
               onStatusChange={handleStatusChange}
             />
 
-            {/* Share Button */}
-            <button
-              onClick={() => setShareModalOpen(true)}
-              className="px-3.5 py-2 rounded-xl bg-white dark:bg-zinc-900 hover:bg-slate-100 dark:hover:bg-zinc-800 border border-slate-300 dark:border-zinc-700/80 text-xs font-semibold text-slate-700 dark:text-zinc-200 flex items-center gap-2 transition-all shadow-sm"
-            >
-              <Share2 className="w-4 h-4 text-teal-600 dark:text-teal-400" />
-              <span>Share</span>
-            </button>
+            {/* Share Button (Only for Owner & Reviewer) */}
+            {canShare && (
+              <button
+                onClick={() => setShareModalOpen(true)}
+                className="px-3.5 py-2 rounded-xl bg-white dark:bg-zinc-900 hover:bg-slate-100 dark:hover:bg-zinc-800 border border-slate-300 dark:border-zinc-700/80 text-xs font-semibold text-slate-700 dark:text-zinc-200 flex items-center gap-2 transition-all shadow-sm"
+              >
+                <Share2 className="w-4 h-4 text-teal-600 dark:text-teal-400" />
+                <span>Share</span>
+              </button>
+            )}
           </div>
         </div>
 
-        {/* Workspace Layout: Left Player (2/3), Right Comments (1/3) */}
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 items-start">
+        {/* Workspace Layout: Left Player + Right Comments (collapsible sidebar) */}
+        <div className="flex gap-6 items-start relative">
           {/* Main Video Review Player */}
-          <div className="lg:col-span-2 space-y-4">
+          <div className={`flex-1 min-w-0 space-y-4 transition-all duration-300`}>
             <VideoPlayer
               src={streamSrc}
               comments={comments.filter((c) => c.versionNumber === currentVersionNumber)}
               activeCommentId={activeCommentId}
+              annotationFilter={annotationFilter}
+              onFilterChange={setAnnotationFilter}
               onSelectComment={handleSelectComment}
               onAddCommentAtTime={handleAddCommentAtTime}
-              seekToTime={seekToTime}
-            />
-
-            {/* Keyboard Shortcuts Hint Bar */}
-            <div className="p-3 rounded-2xl bg-white dark:bg-zinc-900/40 border border-slate-200 dark:border-zinc-800/60 flex items-center justify-between text-[11px] text-slate-500 dark:text-zinc-500 overflow-x-auto shadow-sm">
-              <div className="flex items-center gap-4 shrink-0">
-                <span className="font-semibold text-slate-700 dark:text-zinc-400">Shortcuts:</span>
-                <span>
-                  <kbd className="px-1.5 py-0.5 rounded bg-slate-100 dark:bg-zinc-800 border border-slate-300 dark:border-zinc-700 text-slate-700 dark:text-zinc-300 font-mono text-[10px]">
-                    Space
-                  </kbd>{' '}
-                  Play/Pause
-                </span>
-                <span>
-                  <kbd className="px-1.5 py-0.5 rounded bg-slate-100 dark:bg-zinc-800 border border-slate-300 dark:border-zinc-700 text-slate-700 dark:text-zinc-300 font-mono text-[10px]">
-                    ←
-                  </kbd>{' '}
-                  <kbd className="px-1.5 py-0.5 rounded bg-slate-100 dark:bg-zinc-800 border border-slate-300 dark:border-zinc-700 text-slate-700 dark:text-zinc-300 font-mono text-[10px]">
-                    →
-                  </kbd>{' '}
-                  Frame Step
-                </span>
-                <span>
-                  <kbd className="px-1.5 py-0.5 rounded bg-slate-100 dark:bg-zinc-800 border border-slate-300 dark:border-zinc-700 text-slate-700 dark:text-zinc-300 font-mono text-[10px]">
-                    J
-                  </kbd>{' '}
-                  <kbd className="px-1.5 py-0.5 rounded bg-slate-100 dark:bg-zinc-800 border border-slate-300 dark:border-zinc-700 text-slate-700 dark:text-zinc-300 font-mono text-[10px]">
-                    K
-                  </kbd>{' '}
-                  <kbd className="px-1.5 py-0.5 rounded bg-slate-100 dark:bg-zinc-800 border border-slate-300 dark:border-zinc-700 text-slate-700 dark:text-zinc-300 font-mono text-[10px]">
-                    L
-                  </kbd>{' '}
-                  Shuttle
-                </span>
-                <span>
-                  <kbd className="px-1.5 py-0.5 rounded bg-slate-100 dark:bg-zinc-800 border border-slate-300 dark:border-zinc-700 text-slate-700 dark:text-zinc-300 font-mono text-[10px]">
-                    C
-                  </kbd>{' '}
-                  Add Comment
-                </span>
-              </div>
-            </div>
-          </div>
-
-          {/* Timecoded Comments Sidebar */}
-          <div className="h-[680px]">
-            <CommentSidebar
-              comments={comments}
-              currentTimestamp={seekToTime || 0}
-              currentVersionNumber={currentVersionNumber}
-              activeCommentId={activeCommentId}
-              currentUser={user}
-              onSeekTo={(t, id) => {
-                setSeekToTime(t);
-                if (id) setActiveCommentId(id);
-              }}
               onAddComment={handleAddComment}
+              seekToTime={seekToTime}
+              draftPin={draftPin}
+              onDraftPinChange={setDraftPin}
+              currentUser={user}
               onResolveComment={handleResolveComment}
               onDeleteComment={handleDeleteComment}
-              onEditComment={handleEditComment}
             />
+          </div>
+
+          {/* Collapsible Comment Sidebar */}
+          <div className={`relative flex-shrink-0 transition-all duration-300 ease-in-out ${commentSidebarOpen ? 'w-80 xl:w-96' : 'w-0'}`}>
+            {/* Toggle button */}
+            <button
+              onClick={() => setCommentSidebarOpen(!commentSidebarOpen)}
+              title={commentSidebarOpen ? 'Collapse comments' : 'Expand comments'}
+              className={`absolute top-0 z-20 flex items-center justify-center w-7 h-7 rounded-full bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-700 shadow-md text-slate-500 dark:text-zinc-400 hover:text-teal-600 dark:hover:text-teal-400 hover:border-teal-500/40 transition-all ${commentSidebarOpen ? '-left-3.5' : '-left-8'}`}
+            >
+              {commentSidebarOpen ? <PanelRightClose className="w-3.5 h-3.5" /> : <PanelRightOpen className="w-3.5 h-3.5" />}
+            </button>
+
+            {/* Sidebar content */}
+            {commentSidebarOpen && (
+              <div className="h-[420px] lg:h-[450px] xl:h-[480px] max-h-[500px] flex flex-col min-w-0 w-full">
+                <CommentSidebar
+                  comments={comments}
+                  currentTimestamp={seekToTime || 0}
+                  currentVersionNumber={currentVersionNumber}
+                  activeCommentId={activeCommentId}
+                  currentUser={user}
+                  filter={annotationFilter}
+                  onFilterChange={setAnnotationFilter}
+                  draftPin={draftPin}
+                  onClearDraftPin={() => setDraftPin(null)}
+                  projectId={projectId}
+                  onSeekTo={(t, id) => {
+                    setSeekToTime(t);
+                    if (id) setActiveCommentId(id);
+                  }}
+                  onAddComment={handleAddComment}
+                  onResolveComment={handleResolveComment}
+                  onDeleteComment={handleDeleteComment}
+                  onEditComment={handleEditComment}
+                />
+              </div>
+            )}
+
+            {/* Comment count badge when collapsed */}
+            {!commentSidebarOpen && (
+              <div className="absolute -left-12 top-10 flex flex-col items-center gap-1">
+                <div className="flex items-center gap-1 bg-teal-600 text-white text-[10px] font-bold px-2 py-1 rounded-full shadow-md">
+                  <MessageSquare className="w-3 h-3" />
+                  {comments.filter(c => c.versionNumber === currentVersionNumber && !c.parentCommentId).length}
+                </div>
+              </div>
+            )}
           </div>
         </div>
 
@@ -409,6 +448,15 @@ function VideoReviewContent({
           videoId={videoId}
           videoTitle={asset.name}
         />
+
+        {/* Version Comparison Modal */}
+        {compareModalOpen && versions.length >= 2 && (
+          <VersionComparison
+            versions={versions}
+            videoId={videoId}
+            onClose={() => setCompareModalOpen(false)}
+          />
+        )}
       </div>
     </AppLayout>
   );

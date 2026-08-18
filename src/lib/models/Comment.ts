@@ -8,7 +8,11 @@ export interface IComment extends Document {
   guestName?: string;
   text: string;
   timestamp: number; // in seconds (float, e.g., 42.500)
+  timestampEnd?: number; // optional end time for range-based comments
   frameNumber?: number;
+  x?: number; // 0-100% position on video frame
+  y?: number; // 0-100% position on video frame
+  drawingData?: string;
   parentCommentId?: Types.ObjectId;
   resolved: boolean;
   resolvedBy?: Types.ObjectId;
@@ -26,16 +30,25 @@ const CommentSchema = new Schema<IComment>(
     guestName: { type: String },
     text: { type: String, required: true, trim: true },
     timestamp: { type: Number, required: true, default: 0, index: true },
+    timestampEnd: { type: Number },
     frameNumber: { type: Number },
+    x: { type: Number },
+    y: { type: Number },
+    drawingData: { type: String },
     parentCommentId: { type: Schema.Types.ObjectId, ref: 'Comment', default: null, index: true },
     resolved: { type: Boolean, default: false, index: true },
     resolvedBy: { type: Schema.Types.ObjectId, ref: 'User' },
     resolvedAt: { type: Date },
   },
-  { timestamps: true }
+  { timestamps: true, strict: false }
 );
 
 CommentSchema.index({ assetId: 1, versionNumber: 1, timestamp: 1 });
 
+if (mongoose.models && mongoose.models.Comment) {
+  delete (mongoose.models as any).Comment;
+}
+
 export const Comment: Model<IComment> =
   mongoose.models.Comment || mongoose.model<IComment>('Comment', CommentSchema);
+

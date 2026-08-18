@@ -6,7 +6,8 @@ export type NotificationType =
   | 'comment_resolved'
   | 'status_changed'
   | 'version_uploaded'
-  | 'member_added';
+  | 'member_added'
+  | 'mention';
 
 export interface INotification extends Document {
   userId: Types.ObjectId;

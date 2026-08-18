@@ -2,7 +2,7 @@
 
 import React, { useState } from 'react';
 import confetti from 'canvas-confetti';
-import { CheckCircle2, AlertCircle, Clock, FileText, Check, AlertTriangle } from 'lucide-react';
+import { CheckCircle2, AlertCircle, Clock, FileText, Check, AlertTriangle, Sparkles } from 'lucide-react';
 import { ReviewStatus } from '@/lib/types';
 
 interface StatusBadgeProps {
@@ -30,6 +30,12 @@ export function StatusBadge({ status, canChangeStatus = false, onStatusChange }:
           bg: 'bg-amber-950/40 border-amber-500/40 text-amber-400',
           dot: 'bg-amber-400 shadow-amber-400/50',
           icon: AlertCircle,
+        };
+      case 'Updated':
+        return {
+          bg: 'bg-cyan-50 dark:bg-cyan-950/40 border-cyan-500/40 text-cyan-700 dark:text-cyan-400',
+          dot: 'bg-cyan-400 shadow-cyan-400/50 animate-pulse',
+          icon: Sparkles,
         };
       case 'In Review':
         return {

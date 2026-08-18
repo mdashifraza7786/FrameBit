@@ -11,7 +11,7 @@ export interface UserProfile {
   googleDriveRootFolderId?: string;
 }
 
-export type ReviewStatus = 'Draft' | 'In Review' | 'Changes Requested' | 'Approved';
+export type ReviewStatus = 'Draft' | 'In Review' | 'Changes Requested' | 'Approved' | 'Updated';
 
 export interface ProjectData {
   id: string;
@@ -91,7 +91,11 @@ export interface CommentData {
   guestName?: string;
   text: string;
   timestamp: number; // seconds
+  timestampEnd?: number; // optional end time for range-based comments
   frameNumber?: number;
+  x?: number; // 0-100% position on video frame
+  y?: number; // 0-100% position on video frame
+  drawingData?: string;
   parentCommentId?: string | null;
   resolved: boolean;
   resolvedBy?: {

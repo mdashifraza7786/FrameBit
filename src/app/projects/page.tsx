@@ -12,6 +12,7 @@ import {
   Film,
   Users,
   X,
+  AlertTriangle,
 } from 'lucide-react';
 import { ProjectData } from '@/lib/types';
 
@@ -77,9 +78,30 @@ export default function ProjectsPage() {
       p.description?.toLowerCase().includes(search.toLowerCase())
   );
 
+  const driveNotConnected = user?.role === 'owner' && !user?.googleDriveConnected;
+
   return (
     <AppLayout>
       <div className="max-w-7xl mx-auto space-y-8 animate-in fade-in duration-200">
+        {/* Google Drive Not Connected Banner */}
+        {driveNotConnected && (
+          <div className="flex items-start gap-3 p-4 rounded-2xl bg-amber-50 dark:bg-amber-950/20 border border-amber-400/40 text-amber-800 dark:text-amber-300">
+            <AlertTriangle className="w-5 h-5 shrink-0 mt-0.5 text-amber-500" />
+            <div className="flex-1 min-w-0">
+              <p className="text-sm font-semibold">Google Drive not connected</p>
+              <p className="text-xs mt-0.5 opacity-80">
+                You need to connect Google Drive before creating projects. All project files are stored in your own Drive.
+              </p>
+            </div>
+            <Link
+              href="/settings"
+              className="shrink-0 px-3.5 py-1.5 rounded-xl bg-amber-500 hover:bg-amber-400 text-white text-xs font-semibold transition-colors shadow-sm"
+            >
+              Connect Drive
+            </Link>
+          </div>
+        )}
+
         {/* Header */}
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
           <div>
@@ -92,12 +114,21 @@ export default function ProjectsPage() {
             </p>
           </div>
 
-          <button
-            onClick={() => setModalOpen(true)}
-            className="px-5 py-2.5 rounded-2xl bg-teal-600 hover:bg-teal-500 text-white font-semibold text-xs shadow-lg shadow-teal-600/25 flex items-center justify-center gap-2 transition-all shrink-0"
-          >
-            <Plus className="w-4 h-4" /> Create Project
-          </button>
+          {driveNotConnected ? (
+            <Link
+              href="/settings"
+              className="px-5 py-2.5 rounded-2xl bg-amber-500 hover:bg-amber-400 text-white font-semibold text-xs shadow-lg shadow-amber-500/25 flex items-center justify-center gap-2 transition-all shrink-0"
+            >
+              <HardDrive className="w-4 h-4" /> Connect Google Drive
+            </Link>
+          ) : (
+            <button
+              onClick={() => setModalOpen(true)}
+              className="px-5 py-2.5 rounded-2xl bg-teal-600 hover:bg-teal-500 text-white font-semibold text-xs shadow-lg shadow-teal-600/25 flex items-center justify-center gap-2 transition-all shrink-0"
+            >
+              <Plus className="w-4 h-4" /> Create Project
+            </button>
+          )}
         </div>
 
         {/* Filter / Search Bar */}
@@ -120,14 +151,25 @@ export default function ProjectsPage() {
             <FolderKanban className="w-12 h-12 text-slate-300 dark:text-zinc-600 mx-auto" />
             <h3 className="text-base font-semibold text-slate-700 dark:text-zinc-300">No projects found</h3>
             <p className="text-xs text-slate-500 dark:text-zinc-500 max-w-sm mx-auto">
-              Create your first project to organize cuts and begin collaborating with your team.
+              {driveNotConnected
+                ? 'Connect Google Drive first to start creating projects and organizing your videos.'
+                : 'Create your first project to organize cuts and begin collaborating with your team.'}
             </p>
-            <button
-              onClick={() => setModalOpen(true)}
-              className="px-4 py-2 rounded-xl bg-teal-600 hover:bg-teal-500 text-white text-xs font-semibold shadow-md inline-flex items-center gap-1.5 transition-all"
-            >
-              <Plus className="w-3.5 h-3.5" /> Create Project
-            </button>
+            {driveNotConnected ? (
+              <Link
+                href="/settings"
+                className="px-4 py-2 rounded-xl bg-amber-500 hover:bg-amber-400 text-white text-xs font-semibold shadow-md inline-flex items-center gap-1.5 transition-all"
+              >
+                <HardDrive className="w-3.5 h-3.5" /> Connect Google Drive
+              </Link>
+            ) : (
+              <button
+                onClick={() => setModalOpen(true)}
+                className="px-4 py-2 rounded-xl bg-teal-600 hover:bg-teal-500 text-white text-xs font-semibold shadow-md inline-flex items-center gap-1.5 transition-all"
+              >
+                <Plus className="w-3.5 h-3.5" /> Create Project
+              </button>
+            )}
           </div>
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
