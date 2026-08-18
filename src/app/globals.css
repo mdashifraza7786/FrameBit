@@ -64,6 +64,70 @@
   animation: marker-pulse 2s infinite ease-in-out;
 }
 
+/* Landing page: animated perspective grid floor */
+@keyframes grid-scroll {
+  0% {
+    background-position: 0 0, 0 0;
+  }
+  100% {
+    background-position: 0 48px, 0 48px;
+  }
+}
+
+.grid-floor {
+  animation: grid-scroll 2.4s linear infinite;
+}
+
+/* Landing page: floating ambient glow orbs */
+@keyframes glow-float {
+  0%, 100% {
+    transform: translate(0, 0) scale(1);
+  }
+  50% {
+    transform: translate(3%, -6%) scale(1.08);
+  }
+}
+@keyframes glow-float-slow {
+  0%, 100% {
+    transform: translate(0, 0) scale(1);
+  }
+  50% {
+    transform: translate(-4%, 5%) scale(1.12);
+  }
+}
+@keyframes glow-float-alt {
+  0%, 100% {
+    transform: translate(0, 0) scale(1);
+  }
+  50% {
+    transform: translate(-3%, -4%) scale(0.95);
+  }
+}
+
+.animate-glow-float {
+  animation: glow-float 9s ease-in-out infinite;
+}
+.animate-glow-float-slow {
+  animation: glow-float-slow 13s ease-in-out infinite;
+}
+.animate-glow-float-alt {
+  animation: glow-float-alt 11s ease-in-out infinite;
+}
+
+/* Landing page: gradient text shimmer */
+@keyframes text-shimmer {
+  0% {
+    background-position: 0% 50%;
+  }
+  100% {
+    background-position: 200% 50%;
+  }
+}
+.animate-text-shimmer {
+  background-size: 200% auto;
+  animation: text-shimmer 4s linear infinite;
+}
+
 /* Glassmorphic panels */
 .glass-panel {
   backdrop-filter: blur(12px);
