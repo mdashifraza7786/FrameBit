@@ -282,6 +282,8 @@ function VideoReviewContent({
   const canChangeStatus = userRole === 'owner' || userRole === 'reviewer';
   const canShare = userRole === 'owner' || userRole === 'reviewer';
   const streamSrc = `/api/videos/${videoId}/stream?version=${currentVersionNumber}`;
+  const displayTitle =
+    asset && currentVersionNumber >= 2 ? `${asset.name} - v${currentVersionNumber}` : asset?.name;
 
   if (loading) {
     return (
@@ -306,12 +308,12 @@ function VideoReviewContent({
                 <span>{project?.name || 'Project'}</span>
               </Link>
               <ChevronRight className="w-3.5 h-3.5" />
-              <span className="text-slate-800 dark:text-zinc-300 font-semibold truncate">{asset.name}</span>
+              <span className="text-slate-800 dark:text-zinc-300 font-semibold truncate">{displayTitle}</span>
             </div>
 
             <div className="flex items-center gap-3">
               <h1 className="text-xl sm:text-2xl font-bold tracking-tight text-slate-900 dark:text-white truncate">
-                {asset.name}
+                {displayTitle}
               </h1>
 
               {/* Version Switcher */}

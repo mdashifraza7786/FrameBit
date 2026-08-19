@@ -188,6 +188,7 @@ export default function GuestReviewPage({
   }
 
   const streamSrc = `/api/videos/${asset._id}/stream?version=${currentVersionNumber}&token=${token}`;
+  const displayTitle = currentVersionNumber >= 2 ? `${asset.name} - v${currentVersionNumber}` : asset.name;
 
   return (
     <div className="min-h-screen bg-slate-50 dark:bg-[#090a0f] text-slate-900 dark:text-zinc-100 flex flex-col selection:bg-teal-500/30 selection:text-teal-600 dark:selection:text-teal-300 transition-colors">
@@ -221,7 +222,7 @@ export default function GuestReviewPage({
           <div className="space-y-1 min-w-0">
             <div className="text-xs text-teal-600 dark:text-teal-400 font-semibold">{project?.name}</div>
             <div className="flex items-center gap-3">
-              <h1 className="text-xl sm:text-2xl font-bold text-slate-900 dark:text-white truncate">{asset.name}</h1>
+              <h1 className="text-xl sm:text-2xl font-bold text-slate-900 dark:text-white truncate">{displayTitle}</h1>
               <VersionSelector
                 versions={versions}
                 currentVersionNumber={currentVersionNumber}

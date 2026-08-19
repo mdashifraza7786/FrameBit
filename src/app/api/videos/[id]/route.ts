@@ -284,9 +284,10 @@ export async function DELETE(
       if (asset.currentVersionNumber === targetVersionNumber) {
         nextVersionNumber = remainingVersions[0].versionNumber;
         asset.currentVersionNumber = nextVersionNumber;
-        if (remainingVersions[0].thumbnailUrl) {
-          asset.thumbnailUrl = remainingVersions[0].thumbnailUrl;
-        }
+        // Always refresh — clear to undefined if the fallback version has no thumbnail of
+        // its own, so the thumbnail route re-resolves it instead of showing the deleted
+        // version's stale cached image.
+        asset.thumbnailUrl = remainingVersions[0].thumbnailUrl || undefined;
         await asset.save();
       }
 
