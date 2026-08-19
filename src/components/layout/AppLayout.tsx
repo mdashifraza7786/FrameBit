@@ -30,11 +30,8 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-[#090a0f] flex items-center justify-center">
-        <div className="flex flex-col items-center gap-3">
-          <div className="w-10 h-10 border-2 border-teal-500/30 border-t-teal-500 rounded-full animate-spin" />
-          <span className="text-xs text-zinc-500 font-medium">Loading FrameBit Workspace...</span>
-        </div>
+      <div className="min-h-screen bg-slate-50 dark:bg-[#090a0f] flex items-center justify-center transition-colors">
+        <div className="w-10 h-10 border-2 border-teal-500/30 border-t-teal-500 rounded-full animate-spin" />
       </div>
     );
   }

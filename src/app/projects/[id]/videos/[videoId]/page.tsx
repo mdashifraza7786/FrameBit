@@ -288,7 +288,9 @@ function VideoReviewContent({
   if (loading) {
     return (
       <AppLayout>
-        <div className="py-24 text-center text-xs text-zinc-500">Loading video workspace...</div>
+        <div className="flex items-center justify-center py-24">
+          <div className="w-8 h-8 border-2 border-teal-500/30 border-t-teal-500 rounded-full animate-spin" />
+        </div>
       </AppLayout>
     );
   }

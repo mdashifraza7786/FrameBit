@@ -145,7 +145,9 @@ export default function ProjectsPage() {
 
         {/* Projects Grid */}
         {loading ? (
-          <div className="py-20 text-center text-xs text-slate-400 dark:text-zinc-500">Loading projects...</div>
+          <div className="flex items-center justify-center py-20">
+            <div className="w-8 h-8 border-2 border-teal-500/30 border-t-teal-500 rounded-full animate-spin" />
+          </div>
         ) : filteredProjects.length === 0 ? (
           <div className="py-20 rounded-3xl bg-white dark:bg-zinc-900/40 border border-slate-200 dark:border-zinc-800/60 text-center space-y-3 shadow-sm">
             <FolderKanban className="w-12 h-12 text-slate-300 dark:text-zinc-600 mx-auto" />

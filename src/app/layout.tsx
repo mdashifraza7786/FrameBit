@@ -1,4 +1,5 @@
 import type { Metadata } from 'next';
+import { cookies } from 'next/headers';
 import { Geist, Geist_Mono } from 'next/font/google';
 import './globals.css';
 import { AuthProvider } from '@/context/AuthContext';
@@ -19,15 +20,19 @@ export const metadata: Metadata = {
   description: 'High-precision video review and collaboration platform powered by Google Drive storage and MongoDB',
 };
 
-export default function RootLayout({
+export default async function RootLayout({
   children,
 }: Readonly<{
   children: React.ReactNode;
 }>) {
+  const cookieStore = await cookies();
+  const savedTheme = cookieStore.get('framebit_theme')?.value;
+  const theme = savedTheme === 'light' ? 'light' : 'dark';
+
   return (
-    <html lang="en" className="dark h-full" suppressHydrationWarning>
+    <html lang="en" className={`${theme} h-full`} data-theme={theme} style={{ colorScheme: theme }} suppressHydrationWarning>
       <body className={`${geistSans.variable} ${geistMono.variable} h-full antialiased selection:bg-cyan-500/30 selection:text-cyan-300`}>
-        <ThemeProvider>
+        <ThemeProvider initialTheme={theme}>
           <AuthProvider>{children}</AuthProvider>
         </ThemeProvider>
       </body>

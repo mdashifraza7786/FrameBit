@@ -140,7 +140,9 @@ export default function DashboardPage() {
 
             <div className="space-y-3">
               {loading ? (
-                <div className="p-8 text-center text-xs text-slate-400 dark:text-zinc-500">Loading projects...</div>
+                <div className="flex items-center justify-center p-8">
+                  <div className="w-6 h-6 border-2 border-teal-500/30 border-t-teal-500 rounded-full animate-spin" />
+                </div>
               ) : !data?.recentProjects || data.recentProjects.length === 0 ? (
                 <div className="p-8 rounded-2xl bg-white dark:bg-zinc-900/40 border border-slate-200 dark:border-zinc-800/60 text-center space-y-2">
                   <FolderKanban className="w-8 h-8 text-slate-400 dark:text-zinc-600 mx-auto" />
@@ -188,7 +190,9 @@ export default function DashboardPage() {
 
             <div className="space-y-3">
               {loading ? (
-                <div className="p-8 text-center text-xs text-slate-400 dark:text-zinc-500">Loading video queue...</div>
+                <div className="flex items-center justify-center p-8">
+                  <div className="w-6 h-6 border-2 border-teal-500/30 border-t-teal-500 rounded-full animate-spin" />
+                </div>
               ) : !data?.recentVideos || data.recentVideos.length === 0 ? (
                 <div className="p-12 rounded-2xl bg-white dark:bg-zinc-900/40 border border-slate-200 dark:border-zinc-800/60 text-center space-y-2">
                   <Film className="w-10 h-10 text-slate-400 dark:text-zinc-600 mx-auto" />

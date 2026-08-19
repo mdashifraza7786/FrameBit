@@ -16,10 +16,15 @@ import {
   UserPlus,
   X,
   Play,
+  ListChecks,
+  CheckSquare,
+  Square,
 } from 'lucide-react';
 import { StatusBadge } from '@/components/video/StatusBadge';
 import { UploadModal } from '@/components/video/UploadModal';
-import { VideoAssetData, ProjectData, UserRole } from '@/lib/types';
+import { VideoAssetData, ProjectData, UserRole, ReviewStatus } from '@/lib/types';
+
+const BULK_STATUS_OPTIONS: ReviewStatus[] = ['Draft', 'In Review', 'Changes Requested', 'Approved'];
 
 export default function ProjectDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
@@ -35,6 +40,11 @@ export default function ProjectDetailPage({ params }: { params: Promise<{ id: st
   const [inviteRole, setInviteRole] = useState<UserRole>('reviewer');
   const [isInviting, setIsInviting] = useState(false);
   const [inviteError, setInviteError] = useState('');
+
+  const [selectMode, setSelectMode] = useState(false);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [bulkStatus, setBulkStatus] = useState<ReviewStatus>('In Review');
+  const [isBulkWorking, setIsBulkWorking] = useState(false);
 
   const fetchProjectData = async () => {
     try {
@@ -126,8 +136,70 @@ export default function ProjectDetailPage({ params }: { params: Promise<{ id: st
     }
   };
 
+  const toggleSelect = (videoId: string) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(videoId)) next.delete(videoId);
+      else next.add(videoId);
+      return next;
+    });
+  };
+
+  const toggleSelectAll = () => {
+    setSelectedIds((prev) =>
+      prev.size === videoAssets.length ? new Set() : new Set(videoAssets.map((v) => v._id))
+    );
+  };
+
+  const exitSelectMode = () => {
+    setSelectMode(false);
+    setSelectedIds(new Set());
+  };
+
+  const handleBulkDelete = async () => {
+    if (selectedIds.size === 0 || isBulkWorking) return;
+    if (!confirm(`Delete ${selectedIds.size} selected video(s) and all their versions from Google Drive? This cannot be undone.`)) return;
+
+    setIsBulkWorking(true);
+    try {
+      await Promise.all(
+        Array.from(selectedIds).map((videoId) => fetch(`/api/videos/${videoId}`, { method: 'DELETE' }))
+      );
+      exitSelectMode();
+      await fetchProjectData();
+    } catch (err) {
+      console.error('Bulk delete error:', err);
+    } finally {
+      setIsBulkWorking(false);
+    }
+  };
+
+  const handleBulkStatusChange = async () => {
+    if (selectedIds.size === 0 || isBulkWorking) return;
+
+    setIsBulkWorking(true);
+    try {
+      await Promise.all(
+        Array.from(selectedIds).map((videoId) =>
+          fetch(`/api/videos/${videoId}`, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ status: bulkStatus }),
+          })
+        )
+      );
+      exitSelectMode();
+      await fetchProjectData();
+    } catch (err) {
+      console.error('Bulk status change error:', err);
+    } finally {
+      setIsBulkWorking(false);
+    }
+  };
+
   const isOwner = project?.userRole === 'owner';
   const canUpload = ['owner', 'editor'].includes(project?.userRole || '');
+  const canChangeStatus = ['owner', 'reviewer'].includes(project?.userRole || '');
 
   if (loading) {
     return (
@@ -214,7 +286,77 @@ export default function ProjectDetailPage({ params }: { params: Promise<{ id: st
             <h2 className="text-base font-bold text-slate-800 dark:text-zinc-100 flex items-center gap-2">
               <Film className="w-4 h-4 text-teal-600 dark:text-teal-400" /> Video Assets ({videoAssets.length})
             </h2>
+
+            {videoAssets.length > 0 && (canUpload || canChangeStatus) && (
+              <button
+                onClick={() => (selectMode ? exitSelectMode() : setSelectMode(true))}
+                className={`px-3 py-1.5 rounded-xl text-xs font-semibold flex items-center gap-1.5 border transition-all ${
+                  selectMode
+                    ? 'bg-teal-600 hover:bg-teal-500 text-white border-teal-600'
+                    : 'bg-slate-100 hover:bg-slate-200 dark:bg-zinc-800 dark:hover:bg-zinc-700 border-slate-300 dark:border-zinc-700 text-slate-700 dark:text-zinc-200'
+                }`}
+              >
+                <ListChecks className="w-3.5 h-3.5" />
+                {selectMode ? 'Cancel' : 'Select'}
+              </button>
+            )}
           </div>
+
+          {/* Bulk Action Bar */}
+          {selectMode && (
+            <div className="flex flex-wrap items-center gap-3 p-3 rounded-2xl bg-teal-50 dark:bg-teal-950/30 border border-teal-200 dark:border-teal-900/60">
+              <button
+                onClick={toggleSelectAll}
+                className="text-xs font-semibold text-teal-700 dark:text-teal-300 flex items-center gap-1.5 hover:underline shrink-0"
+              >
+                {selectedIds.size === videoAssets.length ? (
+                  <CheckSquare className="w-3.5 h-3.5" />
+                ) : (
+                  <Square className="w-3.5 h-3.5" />
+                )}
+                {selectedIds.size === videoAssets.length ? 'Deselect All' : 'Select All'}
+              </button>
+
+              <span className="text-xs text-slate-500 dark:text-zinc-400 font-medium">
+                {selectedIds.size} selected
+              </span>
+
+              <div className="flex-1" />
+
+              {canChangeStatus && (
+                <div className="flex items-center gap-2">
+                  <select
+                    value={bulkStatus}
+                    onChange={(e) => setBulkStatus(e.target.value as ReviewStatus)}
+                    className="bg-white dark:bg-zinc-900 border border-slate-300 dark:border-zinc-700 rounded-xl px-2.5 py-1.5 text-xs text-slate-800 dark:text-zinc-200 focus:outline-none"
+                  >
+                    {BULK_STATUS_OPTIONS.map((s) => (
+                      <option key={s} value={s}>
+                        {s}
+                      </option>
+                    ))}
+                  </select>
+                  <button
+                    onClick={handleBulkStatusChange}
+                    disabled={selectedIds.size === 0 || isBulkWorking}
+                    className="px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 dark:bg-zinc-700 dark:hover:bg-zinc-600 text-white text-xs font-semibold disabled:opacity-40 transition-all"
+                  >
+                    Set Status
+                  </button>
+                </div>
+              )}
+
+              {canUpload && (
+                <button
+                  onClick={handleBulkDelete}
+                  disabled={selectedIds.size === 0 || isBulkWorking}
+                  className="px-3 py-1.5 rounded-xl bg-rose-600 hover:bg-rose-500 text-white text-xs font-semibold flex items-center gap-1.5 disabled:opacity-40 transition-all"
+                >
+                  <Trash2 className="w-3.5 h-3.5" /> Delete
+                </button>
+              )}
+            </div>
+          )}
 
           {videoAssets.length === 0 ? (
             <div className="py-20 rounded-3xl bg-white dark:bg-zinc-900/40 border border-slate-200 dark:border-zinc-800/60 text-center space-y-3 shadow-sm">
@@ -234,11 +376,23 @@ export default function ProjectDetailPage({ params }: { params: Promise<{ id: st
             </div>
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
-              {videoAssets.map((vid) => (
+              {videoAssets.map((vid) => {
+                const isSelected = selectedIds.has(vid._id);
+                return (
                 <Link
                   key={vid._id}
-                  href={`/projects/${id}/videos/${vid._id}`}
-                  className="group flex flex-col justify-between p-5 rounded-3xl bg-white dark:bg-zinc-900/80 hover:bg-slate-100 dark:hover:bg-zinc-800 border border-slate-200 dark:border-zinc-800/80 hover:border-teal-500/40 transition-all shadow-xl hover:shadow-teal-500/5 space-y-4"
+                  href={selectMode ? '#' : `/projects/${id}/videos/${vid._id}`}
+                  onClick={(e) => {
+                    if (selectMode) {
+                      e.preventDefault();
+                      toggleSelect(vid._id);
+                    }
+                  }}
+                  className={`group flex flex-col justify-between p-5 rounded-3xl bg-white dark:bg-zinc-900/80 hover:bg-slate-100 dark:hover:bg-zinc-800 border transition-all shadow-xl hover:shadow-teal-500/5 space-y-4 ${
+                    isSelected
+                      ? 'border-teal-500 ring-2 ring-teal-500/40'
+                      : 'border-slate-200 dark:border-zinc-800/80 hover:border-teal-500/40'
+                  }`}
                 >
                   {/* Thumbnail / Video Preview */}
                   <div className="aspect-video w-full rounded-2xl bg-slate-900 dark:bg-zinc-950 border border-slate-300 dark:border-zinc-800/80 flex items-center justify-center relative overflow-hidden group-hover:border-teal-500/40 transition-all shadow-inner">
@@ -254,16 +408,30 @@ export default function ProjectDetailPage({ params }: { params: Promise<{ id: st
 
                     {/* Gradient Overlay & Hover Play Button */}
                     <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-black/30 opacity-60 group-hover:opacity-80 transition-opacity flex items-center justify-center">
-                      <div className="w-12 h-12 rounded-full bg-teal-600/90 text-white flex items-center justify-center shadow-xl opacity-0 group-hover:opacity-100 group-hover:scale-110 transition-all duration-200">
-                        <Play className="w-5 h-5 fill-white translate-x-0.5" />
-                      </div>
+                      {!selectMode && (
+                        <div className="w-12 h-12 rounded-full bg-teal-600/90 text-white flex items-center justify-center shadow-xl opacity-0 group-hover:opacity-100 group-hover:scale-110 transition-all duration-200">
+                          <Play className="w-5 h-5 fill-white translate-x-0.5" />
+                        </div>
+                      )}
                     </div>
 
-                    <div className="absolute top-3 left-3 z-10">
-                      <span className="text-[10px] px-2 py-0.5 rounded-md bg-black/80 backdrop-blur-sm text-zinc-200 border border-zinc-700 font-mono font-semibold">
-                        v{vid.currentVersionNumber}
-                      </span>
-                    </div>
+                    {selectMode && (
+                      <div className="absolute top-3 left-3 z-10">
+                        {isSelected ? (
+                          <CheckSquare className="w-5 h-5 text-teal-400 bg-black/60 rounded" />
+                        ) : (
+                          <Square className="w-5 h-5 text-zinc-200 bg-black/60 rounded" />
+                        )}
+                      </div>
+                    )}
+
+                    {!selectMode && (
+                      <div className="absolute top-3 left-3 z-10">
+                        <span className="text-[10px] px-2 py-0.5 rounded-md bg-black/80 backdrop-blur-sm text-zinc-200 border border-zinc-700 font-mono font-semibold">
+                          v{vid.currentVersionNumber}
+                        </span>
+                      </div>
+                    )}
 
                     <div className="absolute top-3 right-3 z-10">
                       <StatusBadge status={vid.status} />
@@ -280,7 +448,7 @@ export default function ProjectDetailPage({ params }: { params: Promise<{ id: st
                       </span>
                     </div>
 
-                    {canUpload && (
+                    {canUpload && !selectMode && (
                       <button
                         type="button"
                         onClick={(e) => {
@@ -296,7 +464,8 @@ export default function ProjectDetailPage({ params }: { params: Promise<{ id: st
                     )}
                   </div>
                 </Link>
-              ))}
+                );
+              })}
             </div>
           )}
         </div>

@@ -167,10 +167,7 @@ export default function GuestReviewPage({
   if (loading) {
     return (
       <div className="min-h-screen bg-slate-50 dark:bg-[#090a0f] flex items-center justify-center">
-        <div className="flex flex-col items-center gap-3">
-          <div className="w-10 h-10 border-2 border-teal-500/30 border-t-teal-500 rounded-full animate-spin" />
-          <span className="text-xs text-slate-500 dark:text-zinc-500 font-medium">Loading Review Workspace...</span>
-        </div>
+        <div className="w-10 h-10 border-2 border-teal-500/30 border-t-teal-500 rounded-full animate-spin" />
       </div>
     );
   }

@@ -1,6 +1,6 @@
 'use client';
 
-import React, { createContext, useContext, useEffect, useState, useCallback } from 'react';
+import React, { createContext, useContext, useCallback, useState } from 'react';
 
 type Theme = 'dark' | 'light';
 
@@ -12,6 +12,8 @@ interface ThemeContextType {
 
 const ThemeContext = createContext<ThemeContextType | undefined>(undefined);
 
+const THEME_COOKIE = 'framebit_theme';
+
 function applyThemeToDocument(t: Theme) {
   if (typeof document === 'undefined') return;
   const root = document.documentElement;
@@ -21,43 +23,32 @@ function applyThemeToDocument(t: Theme) {
   root.style.colorScheme = t;
 }
 
-export function ThemeProvider({ children }: { children: React.ReactNode }) {
-  const [theme, setThemeState] = useState<Theme>('dark');
-  const [mounted, setMounted] = useState(false);
+function persistThemeCookie(t: Theme) {
+  if (typeof document === 'undefined') return;
+  // 1 year, readable by the server on the next request so the correct
+  // theme class is present in the very first byte of HTML (no FOUC).
+  document.cookie = `${THEME_COOKIE}=${t}; path=/; max-age=31536000; SameSite=Lax`;
+}
 
-  useEffect(() => {
-    try {
-      const saved = localStorage.getItem('framebit_theme') as Theme | null;
-      if (saved === 'light' || saved === 'dark') {
-        setThemeState(saved);
-        applyThemeToDocument(saved);
-      } else {
-        applyThemeToDocument('dark');
-      }
-    } catch {
-      applyThemeToDocument('dark');
-    }
-    setMounted(true);
-  }, []);
+export function ThemeProvider({
+  children,
+  initialTheme = 'dark',
+}: {
+  children: React.ReactNode;
+  initialTheme?: Theme;
+}) {
+  const [theme, setThemeState] = useState<Theme>(initialTheme);
 
   const setTheme = useCallback((newTheme: Theme) => {
     setThemeState(newTheme);
-    try {
-      localStorage.setItem('framebit_theme', newTheme);
-    } catch (e) {
-      console.warn('Failed to save theme in localStorage:', e);
-    }
+    persistThemeCookie(newTheme);
     applyThemeToDocument(newTheme);
   }, []);
 
   const toggleTheme = useCallback(() => {
     setThemeState((prevTheme) => {
       const nextTheme = prevTheme === 'dark' ? 'light' : 'dark';
-      try {
-        localStorage.setItem('framebit_theme', nextTheme);
-      } catch (e) {
-        console.warn('Failed to save theme in localStorage:', e);
-      }
+      persistThemeCookie(nextTheme);
       applyThemeToDocument(nextTheme);
       return nextTheme;
     });

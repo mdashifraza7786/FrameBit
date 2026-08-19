@@ -433,7 +433,9 @@ export default function SettingsPage() {
     <Suspense
       fallback={
         <AppLayout>
-          <div className="p-8 text-center text-xs text-slate-400 dark:text-zinc-500">Loading settings...</div>
+          <div className="flex items-center justify-center p-8">
+            <div className="w-6 h-6 border-2 border-teal-500/30 border-t-teal-500 rounded-full animate-spin" />
+          </div>
         </AppLayout>
       }
     >

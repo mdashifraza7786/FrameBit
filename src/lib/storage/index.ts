@@ -18,11 +18,14 @@ export function getStorageProviderForUser(user?: IUser | null): StorageProvider 
       const expiryDate = user.googleTokens.expiryDate;
 
       if (accessToken || refreshToken) {
-        return new GoogleDriveStorageProvider({
-          accessToken: accessToken || undefined,
-          refreshToken: refreshToken || undefined,
-          expiryDate,
-        });
+        return new GoogleDriveStorageProvider(
+          {
+            accessToken: accessToken || undefined,
+            refreshToken: refreshToken || undefined,
+            expiryDate,
+          },
+          user._id.toString()
+        );
       }
     } catch (tokenErr) {
       console.error('Error decrypting Google Drive tokens for user:', tokenErr);

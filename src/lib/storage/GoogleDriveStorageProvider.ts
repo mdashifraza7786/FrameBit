@@ -1,16 +1,22 @@
 import { google, drive_v3 } from 'googleapis';
+import { Credentials } from 'google-auth-library';
 import { Readable } from 'stream';
 import { StorageProvider, StorageFileMetadata, StorageFolderMetadata, StorageStreamResponse } from './types';
+import { connectDB } from '../db';
+import { encrypt } from '../crypto';
+import { User } from '../models';
 
 export class GoogleDriveStorageProvider implements StorageProvider {
   private oauth2Client: InstanceType<typeof google.auth.OAuth2>;
   private drive: drive_v3.Drive;
+  private userId?: string;
 
-  constructor(tokens: { accessToken?: string; refreshToken?: string; expiryDate?: number }) {
+  constructor(tokens: { accessToken?: string; refreshToken?: string; expiryDate?: number }, userId?: string) {
     const clientId = process.env.GOOGLE_CLIENT_ID || '';
     const clientSecret = process.env.GOOGLE_CLIENT_SECRET || '';
     const redirectUri = process.env.GOOGLE_REDIRECT_URI || 'http://localhost:3000/api/auth/google/callback';
 
+    this.userId = userId;
     this.oauth2Client = new google.auth.OAuth2(clientId, clientSecret, redirectUri);
     this.oauth2Client.setCredentials({
       access_token: tokens.accessToken,
@@ -18,7 +24,29 @@ export class GoogleDriveStorageProvider implements StorageProvider {
       expiry_date: tokens.expiryDate,
     });
 
+    // Persist auto-refreshed access tokens so subsequent requests reuse them
+    // instead of round-tripping to Google's token endpoint every time.
+    this.oauth2Client.on('tokens', (newTokens) => {
+      this.persistRefreshedTokens(newTokens).catch((err) => {
+        console.error('Failed to persist refreshed Google Drive tokens:', err);
+      });
+    });
+
     this.drive = google.drive({ version: 'v3', auth: this.oauth2Client });
+  }
+
+  private async persistRefreshedTokens(tokens: Credentials): Promise<void> {
+    if (!this.userId) return;
+
+    const update: Record<string, string | number> = {};
+    if (tokens.access_token) update['googleTokens.accessToken'] = encrypt(tokens.access_token);
+    if (tokens.expiry_date) update['googleTokens.expiryDate'] = tokens.expiry_date;
+    if (tokens.refresh_token) update['googleTokens.refreshToken'] = encrypt(tokens.refresh_token);
+
+    if (Object.keys(update).length === 0) return;
+
+    await connectDB();
+    await User.findByIdAndUpdate(this.userId, { $set: update });
   }
 
   /**
