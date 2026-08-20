@@ -56,7 +56,7 @@ export function ShareModal({ isOpen, onClose, videoId, videoTitle }: ShareModalP
         {/* Header */}
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2.5">
-            <div className="p-2 rounded-xl bg-teal-500/10 dark:bg-teal-600/20 text-teal-600 dark:text-teal-400 border border-teal-500/30">
+            <div className="p-2 rounded-xl bg-brand-500/10 dark:bg-teal-600/20 text-brand-600 dark:text-teal-400 border border-brand-500/30 dark:border-teal-500/30">
               <Share2 className="w-5 h-5" />
             </div>
             <div>
@@ -83,7 +83,7 @@ export function ShareModal({ isOpen, onClose, videoId, videoTitle }: ShareModalP
               type="checkbox"
               checked={allowComments}
               onChange={(e) => setAllowComments(e.target.checked)}
-              className="w-4 h-4 rounded bg-slate-200 dark:bg-zinc-800 accent-teal-600"
+              className="w-4 h-4 rounded bg-slate-200 dark:bg-zinc-800 accent-brand-600 dark:accent-teal-600"
             />
           </label>
 
@@ -96,7 +96,7 @@ export function ShareModal({ isOpen, onClose, videoId, videoTitle }: ShareModalP
               type="checkbox"
               checked={allowDownloads}
               onChange={(e) => setAllowDownloads(e.target.checked)}
-              className="w-4 h-4 rounded bg-slate-200 dark:bg-zinc-800 accent-teal-600"
+              className="w-4 h-4 rounded bg-slate-200 dark:bg-zinc-800 accent-brand-600 dark:accent-teal-600"
             />
           </label>
 
@@ -120,22 +120,22 @@ export function ShareModal({ isOpen, onClose, videoId, videoTitle }: ShareModalP
           <button
             onClick={generateLink}
             disabled={isGenerating}
-            className="w-full py-2.5 rounded-xl bg-teal-600 hover:bg-teal-500 text-white text-xs font-semibold shadow-lg shadow-teal-600/20 transition-all disabled:opacity-50"
+            className="w-full py-2.5 rounded-xl bg-brand-600 hover:bg-brand-500 dark:bg-teal-600 dark:hover:bg-teal-500 text-white text-xs font-semibold shadow-lg shadow-brand-600/20 dark:shadow-teal-600/20 transition-all disabled:opacity-50"
           >
             {isGenerating ? 'Generating Link...' : 'Create Secure Review Link'}
           </button>
         ) : (
           <div className="space-y-3 animate-in fade-in">
-            <div className="p-3 bg-slate-50 dark:bg-zinc-950 border border-teal-500/30 rounded-2xl flex items-center justify-between gap-2">
+            <div className="p-3 bg-slate-50 dark:bg-zinc-950 border border-brand-500/30 dark:border-teal-500/30 rounded-2xl flex items-center justify-between gap-2">
               <input
                 type="text"
                 readOnly
                 value={generatedUrl}
-                className="bg-transparent text-xs text-teal-700 dark:text-teal-400 font-mono flex-1 focus:outline-none truncate"
+                className="bg-transparent text-xs text-brand-700 dark:text-teal-400 font-mono flex-1 focus:outline-none truncate"
               />
               <button
                 onClick={copyToClipboard}
-                className="px-3 py-1.5 rounded-xl bg-teal-600 hover:bg-teal-500 text-white text-xs font-semibold flex items-center gap-1.5 shadow-md shadow-teal-600/20 transition-all shrink-0"
+                className="px-3 py-1.5 rounded-xl bg-brand-600 hover:bg-brand-500 dark:bg-teal-600 dark:hover:bg-teal-500 text-white text-xs font-semibold flex items-center gap-1.5 shadow-md shadow-brand-600/20 dark:shadow-teal-600/20 transition-all shrink-0"
               >
                 {copied ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
                 <span>{copied ? 'Copied!' : 'Copy Link'}</span>

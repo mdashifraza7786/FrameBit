@@ -106,7 +106,7 @@ export default function ProjectsPage() {
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
           <div>
             <h1 className="text-2xl sm:text-3xl font-bold tracking-tight text-slate-900 dark:text-white flex items-center gap-2.5">
-              <FolderKanban className="w-7 h-7 text-teal-600 dark:text-teal-400" />
+              <FolderKanban className="w-7 h-7 text-brand-600 dark:text-teal-400" />
               Projects
             </h1>
             <p className="text-xs text-slate-500 dark:text-zinc-400 mt-1">
@@ -124,7 +124,7 @@ export default function ProjectsPage() {
           ) : (
             <button
               onClick={() => setModalOpen(true)}
-              className="px-5 py-2.5 rounded-2xl bg-teal-600 hover:bg-teal-500 text-white font-semibold text-xs shadow-lg shadow-teal-600/25 flex items-center justify-center gap-2 transition-all shrink-0"
+              className="px-5 py-2.5 rounded-2xl bg-brand-600 hover:bg-brand-500 dark:bg-teal-600 dark:hover:bg-teal-500 text-white font-semibold text-xs shadow-lg shadow-brand-600/25 dark:shadow-teal-600/25 flex items-center justify-center gap-2 transition-all shrink-0"
             >
               <Plus className="w-4 h-4" /> Create Project
             </button>
@@ -146,7 +146,7 @@ export default function ProjectsPage() {
         {/* Projects Grid */}
         {loading ? (
           <div className="flex items-center justify-center py-20">
-            <div className="w-8 h-8 border-2 border-teal-500/30 border-t-teal-500 rounded-full animate-spin" />
+            <div className="w-8 h-8 border-2 border-brand-500/30 border-t-brand-500 dark:border-teal-500/30 dark:border-t-teal-500 rounded-full animate-spin" />
           </div>
         ) : filteredProjects.length === 0 ? (
           <div className="py-20 rounded-3xl bg-white dark:bg-zinc-900/40 border border-slate-200 dark:border-zinc-800/60 text-center space-y-3 shadow-sm">
@@ -167,7 +167,7 @@ export default function ProjectsPage() {
             ) : (
               <button
                 onClick={() => setModalOpen(true)}
-                className="px-4 py-2 rounded-xl bg-teal-600 hover:bg-teal-500 text-white text-xs font-semibold shadow-md inline-flex items-center gap-1.5 transition-all"
+                className="px-4 py-2 rounded-xl bg-brand-600 hover:bg-brand-500 dark:bg-teal-600 dark:hover:bg-teal-500 text-white text-xs font-semibold shadow-md inline-flex items-center gap-1.5 transition-all"
               >
                 <Plus className="w-3.5 h-3.5" /> Create Project
               </button>
@@ -179,11 +179,11 @@ export default function ProjectsPage() {
               <Link
                 key={p.id}
                 href={`/projects/${p.id}`}
-                className="group flex flex-col justify-between p-6 rounded-3xl bg-white dark:bg-zinc-900/80 hover:bg-slate-100 dark:hover:bg-zinc-800 border border-slate-200 dark:border-zinc-800/80 hover:border-teal-500/30 transition-all shadow-xl hover:shadow-teal-500/5 space-y-5"
+                className="group flex flex-col justify-between p-6 rounded-3xl bg-white dark:bg-zinc-900/80 hover:bg-slate-100 dark:hover:bg-zinc-800 border border-slate-200 dark:border-zinc-800/80 hover:border-brand-500/30 dark:hover:border-teal-500/30 transition-all shadow-xl hover:shadow-brand-500/5 dark:hover:shadow-teal-500/5 space-y-5"
               >
                 <div>
                   <div className="flex items-center justify-between mb-3">
-                    <div className="w-10 h-10 rounded-2xl bg-teal-500/10 dark:bg-teal-600/10 border border-teal-500/20 flex items-center justify-center text-teal-600 dark:text-teal-400 group-hover:scale-105 transition-transform">
+                    <div className="w-10 h-10 rounded-2xl bg-brand-500/10 dark:bg-teal-600/10 border border-brand-500/20 dark:border-teal-500/20 flex items-center justify-center text-brand-600 dark:text-teal-400 group-hover:scale-105 transition-transform">
                       <FolderKanban className="w-5 h-5" />
                     </div>
                     <span className="text-[10px] px-2 py-0.5 rounded-full bg-slate-100 dark:bg-zinc-800 text-slate-600 dark:text-zinc-400 border border-slate-200 dark:border-zinc-700 font-semibold uppercase tracking-wider">
@@ -191,7 +191,7 @@ export default function ProjectsPage() {
                     </span>
                   </div>
 
-                  <h3 className="text-base font-bold text-slate-800 dark:text-zinc-100 group-hover:text-teal-600 dark:group-hover:text-teal-400 transition-colors mb-1.5 line-clamp-1">
+                  <h3 className="text-base font-bold text-slate-800 dark:text-zinc-100 group-hover:text-brand-600 dark:group-hover:text-teal-400 transition-colors mb-1.5 line-clamp-1">
                     {p.name}
                   </h3>
                   <p className="text-xs text-slate-500 dark:text-zinc-400 line-clamp-2 min-h-[32px]">
@@ -221,7 +221,7 @@ export default function ProjectsPage() {
             <div className="w-full max-w-md bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-800 rounded-3xl p-6 shadow-2xl space-y-5 animate-in fade-in zoom-in-95">
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2.5">
-                  <div className="p-2 rounded-xl bg-teal-500/10 dark:bg-teal-600/20 text-teal-600 dark:text-teal-400 border border-teal-500/30">
+                  <div className="p-2 rounded-xl bg-brand-500/10 dark:bg-teal-600/20 text-brand-600 dark:text-teal-400 border border-brand-500/30 dark:border-teal-500/30">
                     <FolderKanban className="w-5 h-5" />
                   </div>
                   <h3 className="font-bold text-base text-slate-800 dark:text-zinc-100">Create New Project</h3>
@@ -234,7 +234,7 @@ export default function ProjectsPage() {
                 </button>
               </div>
 
-              <div className="p-3 rounded-2xl bg-teal-50 dark:bg-teal-950/20 border border-teal-500/30 text-teal-700 dark:text-teal-300 text-xs flex items-center gap-2.5">
+              <div className="p-3 rounded-2xl bg-brand-50 dark:bg-teal-950/20 border border-brand-500/30 dark:border-teal-500/30 text-brand-700 dark:text-teal-300 text-xs flex items-center gap-2.5">
                 <HardDrive className="w-4 h-4 shrink-0" />
                 <span>
                   A dedicated folder will be auto-created under <code>FrameBit/{newProjectName || '...'}</code> on Google Drive.
@@ -250,7 +250,7 @@ export default function ProjectsPage() {
                     value={newProjectName}
                     onChange={(e) => setNewProjectName(e.target.value)}
                     placeholder="e.g. Client XYZ - Brand Film"
-                    className="w-full bg-slate-50 dark:bg-zinc-950 border border-slate-300 dark:border-zinc-800 rounded-xl p-3 text-xs text-slate-900 dark:text-zinc-100 placeholder-slate-400 dark:placeholder-zinc-500 focus:outline-none focus:border-teal-500"
+                    className="w-full bg-slate-50 dark:bg-zinc-950 border border-slate-300 dark:border-zinc-800 rounded-xl p-3 text-xs text-slate-900 dark:text-zinc-100 placeholder-slate-400 dark:placeholder-zinc-500 focus:outline-none focus:border-brand-500 dark:focus:border-teal-500"
                   />
                 </div>
 
@@ -261,7 +261,7 @@ export default function ProjectsPage() {
                     value={newProjectDesc}
                     onChange={(e) => setNewProjectDesc(e.target.value)}
                     placeholder="Provide context or guidelines for the review team..."
-                    className="w-full bg-slate-50 dark:bg-zinc-950 border border-slate-300 dark:border-zinc-800 rounded-xl p-3 text-xs text-slate-900 dark:text-zinc-100 placeholder-slate-400 dark:placeholder-zinc-500 focus:outline-none focus:border-teal-500 resize-none"
+                    className="w-full bg-slate-50 dark:bg-zinc-950 border border-slate-300 dark:border-zinc-800 rounded-xl p-3 text-xs text-slate-900 dark:text-zinc-100 placeholder-slate-400 dark:placeholder-zinc-500 focus:outline-none focus:border-brand-500 dark:focus:border-teal-500 resize-none"
                   />
                 </div>
 
@@ -276,7 +276,7 @@ export default function ProjectsPage() {
                   <button
                     type="submit"
                     disabled={creating || !newProjectName.trim()}
-                    className="px-5 py-2 rounded-xl text-xs font-semibold bg-teal-600 hover:bg-teal-500 text-white shadow-lg shadow-teal-600/20 transition-all disabled:opacity-50"
+                    className="px-5 py-2 rounded-xl text-xs font-semibold bg-brand-600 hover:bg-brand-500 dark:bg-teal-600 dark:hover:bg-teal-500 text-white shadow-lg shadow-brand-600/20 dark:shadow-teal-600/20 transition-all disabled:opacity-50"
                   >
                     {creating ? 'Creating...' : 'Create Project'}
                   </button>

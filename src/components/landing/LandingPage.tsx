@@ -1,11 +1,9 @@
 'use client';
 
-import React, { Suspense } from 'react';
-import dynamic from 'next/dynamic';
+import React from 'react';
 import Link from 'next/link';
 import { motion, type Variants } from 'framer-motion';
 import {
-  Sparkles,
   MapPin,
   Pencil,
   MessageSquare,
@@ -13,8 +11,8 @@ import {
   Share2,
   ShieldCheck,
   ArrowRight,
+  ArrowUpRight,
   CheckCircle2,
-  PlayCircle,
   LayoutDashboard,
   Zap,
   Layers,
@@ -23,60 +21,109 @@ import {
   Folder,
   FileVideo,
   ExternalLink,
-  Ban,
+  UserCog,
+  Film,
+  Eye,
 } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
-import { GridBackground } from './GridBackground';
 import { TiltCard } from './TiltCard';
+import { TimecodeRuler } from './TimecodeRuler';
 
-const Hero3DScene = dynamic(() => import('./Hero3DScene'), { ssr: false });
+const INK = '#14140F';
+const PAPER = '#F7F5EF';
+const HAIRLINE = '#E4DFD1';
+const REC = '#E0361E';
+const TEAL = '#0d7d73';
 
 const fadeUp: Variants = {
-  hidden: { opacity: 0, y: 28 },
-  show: { opacity: 1, y: 0, transition: { duration: 0.6, ease: [0.22, 1, 0.36, 1] } },
+  hidden: { opacity: 0, y: 22 },
+  show: { opacity: 1, y: 0, transition: { duration: 0.55, ease: [0.22, 1, 0.36, 1] } },
 };
 
 const stagger: Variants = {
   hidden: {},
-  show: { transition: { staggerChildren: 0.09 } },
+  show: { transition: { staggerChildren: 0.08 } },
 };
+
+const Perforations = ({ className = '' }: { className?: string }) => (
+  <div
+    className={`h-2.5 w-full ${className}`}
+    style={{
+      backgroundColor: INK,
+      backgroundImage: `radial-gradient(circle, ${PAPER} 2px, transparent 2.2px)`,
+      backgroundSize: '16px 100%',
+      backgroundPosition: 'center',
+    }}
+    aria-hidden="true"
+  />
+);
 
 const FEATURES = [
   {
     icon: MapPin,
-    color: 'text-teal-400',
+    tint: 'bg-[#FDEDEA] text-[#E0361E]',
     title: 'Pinpoint Annotations',
     desc: 'Drop precise pins directly on any frame. Feedback lands exactly where it matters, not lost in a text thread.',
   },
   {
     icon: Pencil,
-    color: 'text-purple-400',
+    tint: 'bg-[#E7F5F3] text-[#0d7d73]',
     title: 'Draw & Sketch',
     desc: 'Freehand pen, shapes, arrows — mark up the frame like a whiteboard, right on top of the video.',
   },
   {
     icon: Clock,
-    color: 'text-amber-400',
+    tint: 'bg-[#FBF1DE] text-[#B4790A]',
     title: 'Time-Range Comments',
     desc: 'Flag a moment or an entire range. Feedback stays visible for exactly as long as it matters.',
   },
   {
     icon: MessageSquare,
-    color: 'text-cyan-400',
+    tint: 'bg-[#E7F5F3] text-[#0d7d73]',
     title: 'Threaded Discussion',
     desc: '@mention teammates, reply in threads, resolve when done. Every conversation stays attached to its frame.',
   },
   {
     icon: Share2,
-    color: 'text-emerald-400',
+    tint: 'bg-[#FDEDEA] text-[#E0361E]',
     title: 'Guest Review Links',
     desc: 'Share a secure link with clients — no account needed. They comment, you stay in control.',
   },
   {
     icon: ShieldCheck,
-    color: 'text-rose-400',
+    tint: 'bg-[#EFEDE4] text-[#14140F]',
     title: 'Private by Default',
     desc: 'Every project is access-controlled. Nothing is public unless you explicitly share it.',
+  },
+  {
+    icon: Layers,
+    tint: 'bg-[#FBF1DE] text-[#B4790A]',
+    title: 'Version History',
+    desc: 'Group every cut — v1, v2, v3 — under one asset. Comments stay isolated to the version they were made on.',
+  },
+  {
+    icon: Zap,
+    tint: 'bg-[#E7F5F3] text-[#0d7d73]',
+    title: 'Live Sync',
+    desc: 'New comments, status changes, and approvals broadcast instantly — everyone sees the same board, live.',
+  },
+];
+
+const PROBLEMS = [
+  {
+    quote: '"around 0:45, near the end?"',
+    problem: 'Timestamped feedback in a text thread is a guess, not a location.',
+    fix: 'A pin lands on frame 0:45:12 — exactly, every time.',
+  },
+  {
+    quote: '"see attached screenshot"',
+    problem: "A screenshot can't show motion, timing, or a range.",
+    fix: 'Draw over the footage and flag the exact range that needs work.',
+  },
+  {
+    quote: '"wait — is this v2 or v3?"',
+    problem: 'Cuts pile up in a chat thread with no history to follow.',
+    fix: 'Every cut is versioned automatically, notes stay pinned to their version.',
   },
 ];
 
@@ -86,26 +133,58 @@ const STEPS = [
   { n: '03', title: 'Resolve & ship', desc: 'Track what’s addressed, compare versions, and move on with confidence.' },
 ];
 
+const ROLES = [
+  { icon: UserCog, title: 'Owner / Admin', desc: 'Full project control — invites, versions, approvals, deletion.' },
+  { icon: Film, title: 'Editor', desc: 'Uploads cuts, adds versions, manages and resolves feedback.' },
+  { icon: Eye, title: 'Reviewer', desc: 'Frame-accurate playback, timecoded comments, approve or request changes.' },
+];
+
+function LogoMark({ size = 'w-9 h-9' }: { size?: string }) {
+  return (
+    <div className={`${size} rounded-lg flex items-center justify-center shrink-0`} style={{ backgroundColor: INK }}>
+      <svg viewBox="0 0 24 24" className="w-5 h-5" fill="none">
+        <path
+          d="M3 8V4h4M17 4h4v4M21 16v4h-4M7 20H3v-4"
+          stroke={PAPER}
+          strokeWidth={2}
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        />
+        <circle cx="12" cy="12" r="2.75" fill={REC} />
+      </svg>
+    </div>
+  );
+}
+
 export function LandingPage() {
   const { user } = useAuth();
 
   return (
-    <div className="relative min-h-screen bg-[#090a0f] text-zinc-100 overflow-x-hidden">
+    <div className="relative min-h-screen overflow-x-hidden font-sans" style={{ backgroundColor: PAPER, color: INK }}>
       {/* ===== Navbar ===== */}
-      <header className="relative z-30 flex items-center justify-between px-6 lg:px-12 h-20">
+      <header
+        className="sticky top-0 z-30 flex items-center justify-between px-6 lg:px-12 h-[72px] backdrop-blur"
+        style={{ backgroundColor: 'rgba(247,245,239,0.88)', borderBottom: `1px solid ${HAIRLINE}` }}
+      >
         <div className="flex items-center gap-2.5">
-          <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-teal-500 to-cyan-700 flex items-center justify-center shadow-lg shadow-teal-500/30">
-            <Sparkles className="w-4.5 h-4.5 text-white" />
-          </div>
-          <span className="font-bold tracking-tight text-lg">
-            Frame<span className="text-teal-400">Bit</span>
+          <LogoMark />
+          <span className="font-display font-extrabold tracking-tight text-lg">
+            Frame<span style={{ color: REC }}>Bit</span>
           </span>
         </div>
+
+        <nav className="hidden md:flex items-center gap-8 text-sm font-medium" style={{ color: '#57543F' }}>
+          <a href="#features" className="hover:text-[#14140F] transition-colors">Features</a>
+          <a href="#how-it-works" className="hover:text-[#14140F] transition-colors">How it works</a>
+          <a href="#storage" className="hover:text-[#14140F] transition-colors">Storage</a>
+        </nav>
+
         <div className="flex items-center gap-3">
           {user ? (
             <Link
               href="/dashboard"
-              className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-gradient-to-r from-teal-500 to-cyan-600 hover:from-teal-400 hover:to-cyan-500 text-white text-sm font-semibold shadow-lg shadow-teal-600/25 transition-all"
+              className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg text-white text-sm font-semibold transition-transform hover:scale-[1.03]"
+              style={{ backgroundColor: REC }}
             >
               <LayoutDashboard className="w-3.5 h-3.5" /> Dashboard
             </Link>
@@ -113,146 +192,191 @@ export function LandingPage() {
             <>
               <Link
                 href="/login"
-                className="hidden sm:inline-flex px-4 py-2 text-sm font-medium text-zinc-300 hover:text-white transition-colors"
+                className="hidden sm:inline-flex px-4 py-2 text-sm font-semibold hover:opacity-70 transition-opacity"
               >
-                Sign In
+                Sign in
               </Link>
               <Link
                 href="/register"
-                className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-gradient-to-r from-teal-500 to-cyan-600 hover:from-teal-400 hover:to-cyan-500 text-white text-sm font-semibold shadow-lg shadow-teal-600/25 transition-all"
+                className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg text-white text-sm font-semibold transition-transform hover:scale-[1.03]"
+                style={{ backgroundColor: REC }}
               >
-                Get Started <ArrowRight className="w-3.5 h-3.5" />
+                Get started <ArrowRight className="w-3.5 h-3.5" />
               </Link>
             </>
           )}
         </div>
       </header>
 
-      {/* ===== Hero ===== */}
-      <section className="relative min-h-[92vh] flex items-center px-6 lg:px-12 py-28 lg:py-0">
-        <GridBackground />
+      <TimecodeRuler />
 
-        <div className="relative z-20 max-w-6xl mx-auto grid lg:grid-cols-2 gap-14 lg:gap-8 items-center w-full">
+      {/* ===== Hero ===== */}
+      <section className="relative px-6 lg:px-12 py-20 lg:py-28">
+        <div className="relative max-w-6xl mx-auto grid lg:grid-cols-2 gap-16 items-center">
           {/* Left: copy */}
-          <div className="text-center lg:text-left">
+          <div>
             <motion.div
-              initial={{ opacity: 0, y: -10 }}
+              initial={{ opacity: 0, y: -8 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.5 }}
-              className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full border border-teal-500/30 bg-teal-500/10 text-teal-300 text-xs font-semibold mb-6"
+              className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full font-mono text-[11px] font-semibold"
+              style={{ border: `1px solid ${HAIRLINE}`, backgroundColor: '#fff', color: '#57543F' }}
             >
-              <Zap className="w-3.5 h-3.5" /> Frame-accurate video review
+              <span className="w-1.5 h-1.5 rounded-full animate-tally" style={{ backgroundColor: REC }} />
+              FRAME-ACCURATE REVIEW
             </motion.div>
 
             <motion.h1
               initial={{ opacity: 0, y: 24 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.7, delay: 0.1, ease: [0.22, 1, 0.36, 1] }}
-              className="text-4xl sm:text-5xl xl:text-6xl font-bold tracking-tight leading-[1.05]"
+              className="font-display mt-6 text-[2.75rem] sm:text-6xl xl:text-[4.25rem] font-black tracking-tight leading-[0.98]"
             >
-              Review video like you&apos;re
+              Pin the note
               <br />
-              <span className="bg-gradient-to-r from-teal-300 via-cyan-300 to-teal-300 bg-clip-text text-transparent animate-text-shimmer">
-                in the room together
-              </span>
+              to the frame.
+              <br />
+              <span style={{ color: REC }}>Not the guesswork.</span>
             </motion.h1>
 
             <motion.p
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.7, delay: 0.25 }}
-              className="mt-6 text-base sm:text-lg text-zinc-400 max-w-lg mx-auto lg:mx-0"
+              className="mt-7 text-lg leading-relaxed max-w-md"
+              style={{ color: '#57543F' }}
             >
-              Pin feedback to the exact frame, sketch over the footage, and thread every
-              conversation to the timeline. FrameBit is where editors and clients actually agree.
+              FrameBit is where editors and clients review cuts together — pin comments to an
+              exact frame, sketch over the footage, and thread every note to the timeline.
             </motion.p>
 
             <motion.div
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.7, delay: 0.4 }}
-              className="mt-9 flex items-center justify-center lg:justify-start gap-3 flex-wrap"
+              className="mt-9 flex items-center gap-3 flex-wrap"
             >
               {user ? (
                 <Link
                   href="/dashboard"
-                  className="inline-flex items-center gap-2 px-6 py-3 rounded-xl bg-gradient-to-r from-teal-500 to-cyan-600 hover:from-teal-400 hover:to-cyan-500 text-white font-semibold shadow-xl shadow-teal-600/30 transition-all hover:scale-[1.03]"
+                  className="inline-flex items-center gap-2 px-6 py-3.5 rounded-lg text-white font-semibold transition-transform hover:scale-[1.03]"
+                  style={{ backgroundColor: REC }}
                 >
-                  Go to Dashboard <LayoutDashboard className="w-4 h-4" />
+                  Go to dashboard <LayoutDashboard className="w-4 h-4" />
                 </Link>
               ) : (
                 <>
                   <Link
                     href="/register"
-                    className="inline-flex items-center gap-2 px-6 py-3 rounded-xl bg-gradient-to-r from-teal-500 to-cyan-600 hover:from-teal-400 hover:to-cyan-500 text-white font-semibold shadow-xl shadow-teal-600/30 transition-all hover:scale-[1.03]"
+                    className="inline-flex items-center gap-2 px-6 py-3.5 rounded-lg text-white font-semibold transition-transform hover:scale-[1.03]"
+                    style={{ backgroundColor: REC }}
                   >
-                    Start Reviewing Free <ArrowRight className="w-4 h-4" />
+                    Start reviewing — free <ArrowRight className="w-4 h-4" />
                   </Link>
                   <Link
                     href="/login"
-                    className="inline-flex items-center gap-2 px-6 py-3 rounded-xl border border-zinc-700 bg-zinc-900/60 backdrop-blur hover:bg-zinc-800 text-zinc-200 font-semibold transition-all"
+                    className="inline-flex items-center gap-2 px-6 py-3.5 rounded-lg font-semibold transition-colors hover:bg-white"
+                    style={{ border: `1px solid ${HAIRLINE}` }}
                   >
-                    <PlayCircle className="w-4 h-4" /> Sign In
+                    Try a demo account
                   </Link>
                 </>
               )}
             </motion.div>
 
-            <motion.div
+            <motion.p
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               transition={{ duration: 0.7, delay: 0.55 }}
-              className="mt-8 flex items-center justify-center lg:justify-start gap-2 text-xs text-zinc-500"
+              className="mt-6 text-xs font-mono"
+              style={{ color: '#8C8874' }}
             >
-              <div className="flex -space-x-2">
-                {['bg-teal-500', 'bg-cyan-500', 'bg-amber-500'].map((c, i) => (
-                  <div key={i} className={`w-6 h-6 rounded-full ${c} border-2 border-[#090a0f]`} />
-                ))}
-              </div>
-              Trusted by editors reviewing frame-by-frame, every day
-            </motion.div>
+              No credit card. Invite your first reviewer in under a minute.
+            </motion.p>
           </div>
 
-          {/* Right: framed 3D visual */}
+          {/* Right: review-frame mockup */}
           <motion.div
-            initial={{ opacity: 0, scale: 0.92 }}
+            initial={{ opacity: 0, scale: 0.94 }}
             animate={{ opacity: 1, scale: 1 }}
-            transition={{ duration: 0.9, delay: 0.2, ease: [0.22, 1, 0.36, 1] }}
+            transition={{ duration: 0.8, delay: 0.2, ease: [0.22, 1, 0.36, 1] }}
             className="relative"
           >
-            <div className="relative aspect-square lg:aspect-[4/5] rounded-3xl border border-zinc-800/80 bg-zinc-900/40 backdrop-blur-sm shadow-2xl shadow-teal-950/40 overflow-hidden">
-              <Suspense fallback={null}>
-                <Hero3DScene />
-              </Suspense>
+            <div
+              className="rounded-2xl overflow-hidden shadow-[0_20px_60px_-15px_rgba(20,20,15,0.25)]"
+              style={{ border: `1px solid ${HAIRLINE}`, backgroundColor: '#fff' }}
+            >
+              <Perforations />
+              <div className="flex items-center justify-between px-4 py-2.5" style={{ borderBottom: `1px solid ${HAIRLINE}` }}>
+                <span className="font-mono text-[10px] font-semibold" style={{ color: '#8C8874' }}>
+                  live_review.mp4
+                </span>
+                <span className="inline-flex items-center gap-1.5 font-mono text-[10px] font-semibold" style={{ color: REC }}>
+                  <span className="w-1.5 h-1.5 rounded-full animate-tally" style={{ backgroundColor: REC }} /> REC
+                </span>
+              </div>
 
-              {/* Corner chip */}
-              <div className="absolute top-4 left-4 flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-zinc-950/70 border border-zinc-800 backdrop-blur text-[10px] font-mono text-teal-300">
-                <span className="w-1.5 h-1.5 rounded-full bg-teal-400 animate-pulse" /> live_review.mp4
+              <div className="relative aspect-[4/3]" style={{ backgroundColor: '#EDEAE0' }}>
+                <Film className="absolute inset-0 m-auto w-16 h-16" style={{ color: '#D8D3C2' }} />
+
+                <motion.div
+                  initial={{ opacity: 0, scale: 0.9 }}
+                  whileInView={{ opacity: 1, scale: 1 }}
+                  viewport={{ once: true }}
+                  transition={{ delay: 0.5, duration: 0.4 }}
+                  className="absolute top-[18%] left-[16%] w-6 h-6 rounded-full border-2 border-white shadow-lg flex items-center justify-center"
+                  style={{ backgroundColor: REC }}
+                >
+                  <span className="w-1.5 h-1.5 rounded-full bg-white" />
+                </motion.div>
+                <motion.div
+                  initial={{ opacity: 0, scale: 0.9, y: 6 }}
+                  whileInView={{ opacity: 1, scale: 1, y: 0 }}
+                  viewport={{ once: true }}
+                  transition={{ delay: 0.65, duration: 0.4 }}
+                  className="absolute top-[8%] left-[26%] w-40 p-2.5 rounded-lg shadow-xl"
+                  style={{ backgroundColor: '#fff', border: `1px solid ${HAIRLINE}` }}
+                >
+                  <div className="flex items-center gap-1.5 mb-1">
+                    <span className="font-mono text-[9px] font-bold" style={{ color: REC }}>00:00:12:04</span>
+                  </div>
+                  <p className="text-[11px] leading-snug font-medium">Logo pops too fast here</p>
+                </motion.div>
+
+                <motion.div
+                  initial={{ opacity: 0, scale: 0.9 }}
+                  whileInView={{ opacity: 1, scale: 1 }}
+                  viewport={{ once: true }}
+                  transition={{ delay: 0.85, duration: 0.4 }}
+                  className="absolute bottom-[28%] right-[18%] w-6 h-6 rounded-full border-2 border-white shadow-lg flex items-center justify-center"
+                  style={{ backgroundColor: TEAL }}
+                >
+                  <span className="w-1.5 h-1.5 rounded-full bg-white" />
+                </motion.div>
+                <motion.div
+                  initial={{ opacity: 0, scale: 0.9, y: 6 }}
+                  whileInView={{ opacity: 1, scale: 1, y: 0 }}
+                  viewport={{ once: true }}
+                  transition={{ delay: 1, duration: 0.4 }}
+                  className="absolute bottom-[8%] right-[4%] w-40 p-2.5 rounded-lg shadow-xl"
+                  style={{ backgroundColor: '#fff', border: `1px solid ${HAIRLINE}` }}
+                >
+                  <div className="flex items-center gap-1.5 mb-1">
+                    <span className="font-mono text-[9px] font-bold" style={{ color: TEAL }}>00:01:04:12</span>
+                  </div>
+                  <p className="text-[11px] leading-snug font-medium">Trim 8 frames off the intro</p>
+                </motion.div>
+              </div>
+
+              <div className="px-4 py-3 flex items-center gap-2" style={{ borderTop: `1px solid ${HAIRLINE}` }}>
+                <div className="flex-1 h-1.5 rounded-full overflow-hidden" style={{ backgroundColor: '#EDEAE0' }}>
+                  <div className="h-full w-2/5" style={{ backgroundColor: REC }} />
+                </div>
+                <span className="font-mono text-[9px]" style={{ color: '#8C8874' }}>00:01:04:12 / 00:02:31:00</span>
               </div>
             </div>
-
-            {/* Floating feature chips around the panel */}
-            <motion.div
-              initial={{ opacity: 0, x: -12 }}
-              animate={{ opacity: 1, x: 0 }}
-              transition={{ duration: 0.6, delay: 0.9 }}
-              className="hidden sm:flex absolute -left-6 bottom-10 items-center gap-2 px-3 py-2 rounded-xl bg-zinc-900/95 border border-teal-500/30 shadow-xl backdrop-blur text-xs font-medium text-zinc-200"
-            >
-              <MapPin className="w-3.5 h-3.5 text-teal-400" /> Pinned to frame 0:42
-            </motion.div>
-            <motion.div
-              initial={{ opacity: 0, x: 12 }}
-              animate={{ opacity: 1, x: 0 }}
-              transition={{ duration: 0.6, delay: 1.05 }}
-              className="hidden sm:flex absolute -right-4 top-10 items-center gap-2 px-3 py-2 rounded-xl bg-zinc-900/95 border border-amber-500/30 shadow-xl backdrop-blur text-xs font-medium text-zinc-200"
-            >
-              <Clock className="w-3.5 h-3.5 text-amber-400" /> Range 0:12 → 0:18
-            </motion.div>
           </motion.div>
         </div>
-
-        {/* Fade to next section */}
-        <div className="absolute bottom-0 inset-x-0 h-32 bg-gradient-to-b from-transparent to-[#090a0f] z-20" />
       </section>
 
       {/* ===== Stats strip ===== */}
@@ -261,7 +385,8 @@ export function LandingPage() {
         initial="hidden"
         whileInView="show"
         viewport={{ once: true, margin: '-100px' }}
-        className="relative z-10 px-6 lg:px-12 py-14 border-y border-zinc-800/60 bg-zinc-950/40"
+        className="relative px-6 lg:px-12 py-12"
+        style={{ borderTop: `1px solid ${HAIRLINE}`, borderBottom: `1px solid ${HAIRLINE}`, backgroundColor: '#fff' }}
       >
         <div className="max-w-5xl mx-auto grid grid-cols-2 sm:grid-cols-4 gap-8 text-center">
           {[
@@ -271,17 +396,17 @@ export function LandingPage() {
             { value: '100%', label: 'Private by default' },
           ].map((s) => (
             <motion.div key={s.label} variants={fadeUp}>
-              <div className="text-2xl sm:text-3xl font-bold bg-gradient-to-r from-teal-300 to-cyan-300 bg-clip-text text-transparent">
+              <div className="font-display text-2xl sm:text-3xl font-black" style={{ color: REC }}>
                 {s.value}
               </div>
-              <div className="text-xs text-zinc-500 mt-1">{s.label}</div>
+              <div className="text-xs mt-1" style={{ color: '#8C8874' }}>{s.label}</div>
             </motion.div>
           ))}
         </div>
       </motion.section>
 
-      {/* ===== Features ===== */}
-      <section className="relative z-10 px-6 lg:px-12 py-24">
+      {/* ===== Problem / solution ===== */}
+      <section className="relative px-6 lg:px-12 py-24">
         <motion.div
           initial="hidden"
           whileInView="show"
@@ -289,10 +414,54 @@ export function LandingPage() {
           variants={fadeUp}
           className="max-w-2xl mx-auto text-center mb-16"
         >
-          <h2 className="text-3xl sm:text-4xl font-bold tracking-tight">
+          <h2 className="font-display text-3xl sm:text-4xl font-black tracking-tight">
+            The note that gets lost is the note that never gets fixed
+          </h2>
+          <p className="mt-4" style={{ color: '#57543F' }}>
+            Feedback in a chat thread is a paraphrase. Feedback pinned to a frame is a fact.
+          </p>
+        </motion.div>
+
+        <motion.div
+          variants={stagger}
+          initial="hidden"
+          whileInView="show"
+          viewport={{ once: true, margin: '-100px' }}
+          className="max-w-6xl mx-auto grid grid-cols-1 md:grid-cols-3 gap-5"
+        >
+          {PROBLEMS.map((p) => (
+            <motion.div
+              key={p.quote}
+              variants={fadeUp}
+              className="rounded-2xl p-6 flex flex-col h-full"
+              style={{ border: `1px solid ${HAIRLINE}`, backgroundColor: '#fff' }}
+            >
+              <span className="font-mono text-[13px] px-3 py-2 rounded-md self-start" style={{ backgroundColor: '#EFEDE4', color: '#57543F' }}>
+                {p.quote}
+              </span>
+              <p className="mt-4 text-sm leading-relaxed" style={{ color: '#57543F' }}>{p.problem}</p>
+              <div className="mt-auto pt-5 flex items-start gap-2" style={{ borderTop: `1px dashed ${HAIRLINE}`, marginTop: '1.25rem' }}>
+                <ArrowUpRight className="w-4 h-4 shrink-0 mt-0.5" style={{ color: REC }} />
+                <p className="text-sm font-semibold leading-snug">{p.fix}</p>
+              </div>
+            </motion.div>
+          ))}
+        </motion.div>
+      </section>
+
+      {/* ===== Features ===== */}
+      <section id="features" className="relative px-6 lg:px-12 py-24" style={{ backgroundColor: '#fff', borderTop: `1px solid ${HAIRLINE}`, borderBottom: `1px solid ${HAIRLINE}` }}>
+        <motion.div
+          initial="hidden"
+          whileInView="show"
+          viewport={{ once: true, margin: '-100px' }}
+          variants={fadeUp}
+          className="max-w-2xl mx-auto text-center mb-16"
+        >
+          <h2 className="font-display text-3xl sm:text-4xl font-black tracking-tight">
             Everything a review round needs
           </h2>
-          <p className="mt-4 text-zinc-400">
+          <p className="mt-4" style={{ color: '#57543F' }}>
             Built for the back-and-forth of real production — not a generic comment box.
           </p>
         </motion.div>
@@ -302,16 +471,20 @@ export function LandingPage() {
           initial="hidden"
           whileInView="show"
           viewport={{ once: true, margin: '-100px' }}
-          className="max-w-6xl mx-auto grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5"
+          className="max-w-6xl mx-auto grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5"
         >
           {FEATURES.map((f) => (
-            <motion.div key={f.title} variants={fadeUp}>
-              <TiltCard className="p-6 h-full hover:border-teal-500/40 transition-colors">
-                <div className={`w-11 h-11 rounded-xl bg-zinc-800/80 border border-zinc-700/60 flex items-center justify-center mb-4 ${f.color}`}>
+            <motion.div key={f.title} variants={fadeUp} className="h-full">
+              <TiltCard
+                className="p-6 h-full flex flex-col"
+                glareColor="rgba(224,54,30,0.08)"
+                style={{ border: `1px solid ${HAIRLINE}`, backgroundColor: PAPER }}
+              >
+                <div className={`w-11 h-11 rounded-xl flex items-center justify-center mb-4 ${f.tint}`}>
                   <f.icon className="w-5 h-5" />
                 </div>
-                <h3 className="font-semibold text-zinc-100 mb-1.5">{f.title}</h3>
-                <p className="text-sm text-zinc-400 leading-relaxed">{f.desc}</p>
+                <h3 className="font-semibold mb-1.5">{f.title}</h3>
+                <p className="text-sm leading-relaxed" style={{ color: '#57543F' }}>{f.desc}</p>
               </TiltCard>
             </motion.div>
           ))}
@@ -319,7 +492,7 @@ export function LandingPage() {
       </section>
 
       {/* ===== Storage: Your own Google Drive ===== */}
-      <section className="relative z-10 px-6 lg:px-12 py-24 bg-zinc-950/40 border-y border-zinc-800/60 overflow-hidden">
+      <section id="storage" className="relative px-6 lg:px-12 py-24 overflow-hidden">
         <div className="max-w-6xl mx-auto grid lg:grid-cols-2 gap-14 items-center">
           {/* Left: copy */}
           <motion.div
@@ -330,18 +503,17 @@ export function LandingPage() {
           >
             <motion.div
               variants={fadeUp}
-              className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full border border-teal-500/30 bg-teal-500/10 text-teal-300 text-xs font-semibold mb-5"
+              className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full font-mono text-[11px] font-semibold mb-5"
+              style={{ border: `1px solid ${HAIRLINE}`, backgroundColor: '#fff', color: '#57543F' }}
             >
-              <HardDrive className="w-3.5 h-3.5" /> Storage
+              <HardDrive className="w-3.5 h-3.5" /> STORAGE
             </motion.div>
-            <motion.h2 variants={fadeUp} className="text-3xl sm:text-4xl font-bold tracking-tight">
+            <motion.h2 variants={fadeUp} className="font-display text-3xl sm:text-4xl font-black tracking-tight">
               Your videos live in
               <br />
-              <span className="bg-gradient-to-r from-teal-300 to-cyan-300 bg-clip-text text-transparent">
-                your own Google Drive
-              </span>
+              <span style={{ color: TEAL }}>your own Google Drive</span>
             </motion.h2>
-            <motion.p variants={fadeUp} className="mt-5 text-zinc-400 leading-relaxed max-w-md">
+            <motion.p variants={fadeUp} className="mt-5 leading-relaxed max-w-md" style={{ color: '#57543F' }}>
               Connect your Google account once. From then on, every upload streams straight from
               your browser into your Drive — FrameBit never stores or retains the binary video
               file on its own servers.
@@ -349,34 +521,20 @@ export function LandingPage() {
 
             <motion.ul variants={stagger} className="mt-7 space-y-4">
               {[
-                {
-                  icon: HardDrive,
-                  title: 'Direct-to-Drive uploads',
-                  desc: 'Resumable uploads go browser → your Google Drive. No detour through our servers.',
-                },
-                {
-                  icon: Ban,
-                  title: 'Zero server-side storage',
-                  desc: 'We never keep a copy of your footage — nothing to leak, nothing to run out of.',
-                },
-                {
-                  icon: Folder,
-                  title: 'Auto-organized folders',
-                  desc: 'Every project gets its own folder under FrameBit / <Project Name> / — tidy by default.',
-                },
-                {
-                  icon: ShieldCheck,
-                  title: 'You stay in control',
-                  desc: 'Open the folder in Drive anytime, or disconnect the account whenever you want.',
-                },
+                { icon: HardDrive, title: 'Direct-to-Drive uploads', desc: 'Resumable uploads go browser → your Google Drive. No detour through our servers.' },
+                { icon: ShieldCheck, title: 'Zero server-side storage', desc: 'We never keep a copy of your footage — nothing to leak, nothing to run out of.' },
+                { icon: Folder, title: 'Auto-organized folders', desc: 'Every project gets its own folder under FrameBit / <Project Name> / — tidy by default.' },
               ].map((item) => (
                 <motion.li key={item.title} variants={fadeUp} className="flex items-start gap-3">
-                  <div className="w-9 h-9 rounded-lg bg-teal-500/10 border border-teal-500/25 flex items-center justify-center text-teal-400 shrink-0">
+                  <div
+                    className="w-9 h-9 rounded-lg flex items-center justify-center shrink-0"
+                    style={{ backgroundColor: '#E7F5F3', color: TEAL }}
+                  >
                     <item.icon className="w-4 h-4" />
                   </div>
                   <div>
-                    <p className="text-sm font-semibold text-zinc-100">{item.title}</p>
-                    <p className="text-xs text-zinc-400 mt-0.5 leading-relaxed">{item.desc}</p>
+                    <p className="text-sm font-semibold">{item.title}</p>
+                    <p className="text-xs mt-0.5 leading-relaxed" style={{ color: '#57543F' }}>{item.desc}</p>
                   </div>
                 </motion.li>
               ))}
@@ -389,139 +547,137 @@ export function LandingPage() {
             whileInView={{ opacity: 1, y: 0 }}
             viewport={{ once: true, margin: '-100px' }}
             transition={{ duration: 0.7, ease: [0.22, 1, 0.36, 1] }}
+            className="rounded-2xl p-5"
+            style={{ border: `1px solid ${HAIRLINE}`, backgroundColor: '#fff' }}
           >
-            <TiltCard className="p-5">
-              <div className="flex items-center justify-between gap-3 pb-4 border-b border-zinc-800">
-                <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 rounded-xl bg-teal-500/10 border border-teal-500/30 flex items-center justify-center text-teal-400">
-                    <HardDrive className="w-5 h-5" />
-                  </div>
-                  <div>
-                    <p className="text-sm font-semibold text-zinc-100">Google Drive Video Storage</p>
-                    <p className="text-[10px] text-zinc-500">Direct-to-Drive · zero server storage</p>
-                  </div>
+            <div className="flex items-center justify-between gap-3 pb-4" style={{ borderBottom: `1px solid ${HAIRLINE}` }}>
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl flex items-center justify-center" style={{ backgroundColor: '#E7F5F3', color: TEAL }}>
+                  <HardDrive className="w-5 h-5" />
                 </div>
-                <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-emerald-500/10 border border-emerald-500/40 text-emerald-400 text-[10px] font-semibold shrink-0">
-                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" /> Connected
-                </span>
+                <div>
+                  <p className="text-sm font-semibold">Google Drive Video Storage</p>
+                  <p className="text-[10px]" style={{ color: '#8C8874' }}>Direct-to-Drive · zero server storage</p>
+                </div>
               </div>
+              <span
+                className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-semibold shrink-0"
+                style={{ backgroundColor: '#E7F5F3', color: TEAL, border: `1px solid ${TEAL}40` }}
+              >
+                <span className="w-1.5 h-1.5 rounded-full animate-tally" style={{ backgroundColor: TEAL }} /> Connected
+              </span>
+            </div>
 
-              {/* Folder tree visual */}
-              <div className="mt-4 rounded-xl bg-zinc-950/70 border border-zinc-800 p-3.5 font-mono text-xs space-y-1.5">
-                <div className="flex items-center gap-1.5 text-teal-300">
-                  <Folder className="w-3.5 h-3.5" /> FrameBit/
-                </div>
-                <div className="flex items-center gap-1.5 pl-4 text-zinc-400">
-                  <Folder className="w-3.5 h-3.5 text-cyan-400" /> Paper Jet Airplane/
-                </div>
-                <div className="flex items-center gap-1.5 pl-8 text-zinc-500">
-                  <FileVideo className="w-3.5 h-3.5" /> v1_draft.mp4
-                </div>
-                <div className="flex items-center gap-1.5 pl-8 text-zinc-300">
-                  <FileVideo className="w-3.5 h-3.5 text-teal-400" /> v2_final.mp4
-                  <span className="ml-auto text-[9px] text-teal-500">current</span>
-                </div>
-                <div className="flex items-center gap-1.5 pl-4 text-zinc-400">
-                  <Folder className="w-3.5 h-3.5 text-cyan-400" /> Brand Launch Reel/
-                </div>
+            <div className="mt-4 rounded-xl p-3.5 font-mono text-xs space-y-1.5" style={{ backgroundColor: PAPER, border: `1px solid ${HAIRLINE}` }}>
+              <div className="flex items-center gap-1.5" style={{ color: TEAL }}>
+                <Folder className="w-3.5 h-3.5" /> FrameBit/
               </div>
+              <div className="flex items-center gap-1.5 pl-4" style={{ color: '#57543F' }}>
+                <Folder className="w-3.5 h-3.5" style={{ color: '#8C8874' }} /> Paper Jet Airplane/
+              </div>
+              <div className="flex items-center gap-1.5 pl-8" style={{ color: '#8C8874' }}>
+                <FileVideo className="w-3.5 h-3.5" /> v1_draft.mp4
+              </div>
+              <div className="flex items-center gap-1.5 pl-8" style={{ color: INK }}>
+                <FileVideo className="w-3.5 h-3.5" style={{ color: REC }} /> v2_final.mp4
+                <span className="ml-auto text-[9px]" style={{ color: REC }}>current</span>
+              </div>
+              <div className="flex items-center gap-1.5 pl-4" style={{ color: '#57543F' }}>
+                <Folder className="w-3.5 h-3.5" style={{ color: '#8C8874' }} /> Brand Launch Reel/
+              </div>
+            </div>
 
-              <div className="mt-4 flex items-center justify-between gap-2 text-xs">
-                <span className="inline-flex items-center gap-1.5 text-zinc-500">
-                  <ExternalLink className="w-3.5 h-3.5" /> Open in Drive
-                </span>
-                <span className="text-zinc-600">owner@gmail.com</span>
-              </div>
-            </TiltCard>
+            <div className="mt-4 flex items-center justify-between gap-2 text-xs">
+              <span className="inline-flex items-center gap-1.5" style={{ color: '#8C8874' }}>
+                <ExternalLink className="w-3.5 h-3.5" /> Open in Drive
+              </span>
+              <span style={{ color: '#B4AF9B' }}>owner@gmail.com</span>
+            </div>
           </motion.div>
         </div>
       </section>
 
       {/* ===== Product showcase mockup ===== */}
-      <section className="relative z-10 px-6 lg:px-12 py-10 pb-28">
+      <section className="relative px-6 lg:px-12 py-10 pb-28">
         <motion.div
-          initial={{ opacity: 0, y: 40, rotateX: 8 }}
-          whileInView={{ opacity: 1, y: 0, rotateX: 0 }}
+          initial={{ opacity: 0, y: 40 }}
+          whileInView={{ opacity: 1, y: 0 }}
           viewport={{ once: true, margin: '-100px' }}
           transition={{ duration: 0.8, ease: [0.22, 1, 0.36, 1] }}
-          style={{ transformPerspective: 1200 }}
-          className="max-w-5xl mx-auto rounded-2xl border border-zinc-800 bg-zinc-900/70 backdrop-blur-xl shadow-2xl overflow-hidden"
+          className="max-w-5xl mx-auto rounded-2xl overflow-hidden shadow-[0_20px_60px_-15px_rgba(20,20,15,0.2)]"
+          style={{ border: `1px solid ${HAIRLINE}`, backgroundColor: '#fff' }}
         >
-          <div className="flex items-center gap-1.5 px-4 py-3 border-b border-zinc-800 bg-zinc-950/60">
-            <div className="w-2.5 h-2.5 rounded-full bg-rose-500/70" />
-            <div className="w-2.5 h-2.5 rounded-full bg-amber-500/70" />
-            <div className="w-2.5 h-2.5 rounded-full bg-emerald-500/70" />
-            <span className="ml-3 text-[11px] text-zinc-500 font-mono">framebit.app/review</span>
+          <Perforations />
+          <div className="flex items-center gap-1.5 px-4 py-3" style={{ borderBottom: `1px solid ${HAIRLINE}` }}>
+            <div className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: REC }} />
+            <div className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: '#E8B23A' }} />
+            <div className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: TEAL }} />
+            <span className="ml-3 font-mono text-[11px]" style={{ color: '#8C8874' }}>framebit.app/review</span>
           </div>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-0">
-            <div className="md:col-span-2 aspect-video bg-gradient-to-br from-zinc-800 to-zinc-950 relative flex items-center justify-center overflow-hidden">
-              <Layers className="w-16 h-16 text-zinc-700" />
+            <div className="md:col-span-2 aspect-video relative flex items-center justify-center overflow-hidden" style={{ backgroundColor: '#EDEAE0' }}>
+              <Layers className="w-16 h-16" style={{ color: '#D8D3C2' }} />
 
-              {/* Fake pin markers */}
-              <div className="absolute top-[30%] left-[35%] w-6 h-6 rounded-full bg-teal-500 border-2 border-white/80 shadow-lg shadow-teal-500/40 animate-marker z-10" />
-              <div className="absolute top-[55%] left-[62%] w-6 h-6 rounded-full bg-amber-500 border-2 border-white/80 shadow-lg shadow-amber-500/40 animate-marker z-10" />
+              <div className="absolute top-[30%] left-[35%] w-6 h-6 rounded-full animate-pin-pop z-10" style={{ backgroundColor: REC, border: '2px solid white', boxShadow: '0 4px 14px rgba(224,54,30,0.35)' }} />
+              <div className="absolute top-[55%] left-[62%] w-6 h-6 rounded-full animate-pin-pop z-10" style={{ backgroundColor: '#E8B23A', border: '2px solid white', boxShadow: '0 4px 14px rgba(232,178,58,0.35)', animationDelay: '0.15s' }} />
 
-              {/* Comment popover on pin 1 — mirrors the real on-video comment card */}
               <motion.div
                 initial={{ opacity: 0, scale: 0.9, y: 6 }}
                 whileInView={{ opacity: 1, scale: 1, y: 0 }}
                 viewport={{ once: true, margin: '-60px' }}
                 transition={{ delay: 0.5, duration: 0.4 }}
-                className="absolute top-[6%] left-[6%] w-44 p-2.5 rounded-xl bg-zinc-900/95 border border-teal-500/50 shadow-xl backdrop-blur-md z-20"
+                className="absolute top-[6%] left-[6%] w-44 p-2.5 rounded-xl shadow-xl z-20"
+                style={{ backgroundColor: '#fff', border: `1px solid ${HAIRLINE}` }}
               >
                 <div className="flex items-center gap-1.5 mb-1.5">
-                  <div className="w-4.5 h-4.5 rounded-full bg-teal-500/20 text-teal-300 flex items-center justify-center text-[9px] font-bold shrink-0">
-                    A
-                  </div>
-                  <span className="text-[10px] font-semibold text-zinc-200 truncate">Ari M.</span>
-                  <span className="ml-auto text-[9px] font-mono text-teal-400 shrink-0">0:12</span>
+                  <div className="w-4.5 h-4.5 rounded-full flex items-center justify-center text-[9px] font-bold shrink-0" style={{ backgroundColor: '#FDEDEA', color: REC }}>A</div>
+                  <span className="text-[10px] font-semibold truncate">Ari M.</span>
+                  <span className="ml-auto font-mono text-[9px] shrink-0" style={{ color: REC }}>0:12</span>
                 </div>
-                <p className="text-[10px] text-zinc-300 leading-snug">Logo pops too fast here</p>
-                <div className="mt-1.5 flex items-center gap-1 text-[9px] text-zinc-500">
+                <p className="text-[10px] leading-snug" style={{ color: '#57543F' }}>Logo pops too fast here</p>
+                <div className="mt-1.5 flex items-center gap-1 text-[9px]" style={{ color: '#8C8874' }}>
                   <MessageSquare className="w-2.5 h-2.5" /> Reply
                 </div>
               </motion.div>
 
-              {/* Comment popover on pin 2 */}
               <motion.div
                 initial={{ opacity: 0, scale: 0.9, y: 6 }}
                 whileInView={{ opacity: 1, scale: 1, y: 0 }}
                 viewport={{ once: true, margin: '-60px' }}
                 transition={{ delay: 0.75, duration: 0.4 }}
-                className="absolute bottom-[14%] right-[4%] w-44 p-2.5 rounded-xl bg-zinc-900/95 border border-amber-500/50 shadow-xl backdrop-blur-md z-20"
+                className="absolute bottom-[14%] right-[4%] w-44 p-2.5 rounded-xl shadow-xl z-20"
+                style={{ backgroundColor: '#fff', border: `1px solid ${HAIRLINE}` }}
               >
                 <div className="flex items-center gap-1.5 mb-1.5">
-                  <div className="w-4.5 h-4.5 rounded-full bg-amber-500/20 text-amber-300 flex items-center justify-center text-[9px] font-bold shrink-0">
-                    O
-                  </div>
-                  <span className="text-[10px] font-semibold text-zinc-200 truncate">Owner Demo</span>
-                  <span className="ml-auto text-[9px] font-mono text-amber-400 shrink-0">1:04</span>
+                  <div className="w-4.5 h-4.5 rounded-full flex items-center justify-center text-[9px] font-bold shrink-0" style={{ backgroundColor: '#FBF1DE', color: '#B4790A' }}>O</div>
+                  <span className="text-[10px] font-semibold truncate">Owner Demo</span>
+                  <span className="ml-auto font-mono text-[9px] shrink-0" style={{ color: '#B4790A' }}>1:04</span>
                 </div>
-                <p className="text-[10px] text-zinc-300 leading-snug">Trim 8 frames off the intro</p>
+                <p className="text-[10px] leading-snug" style={{ color: '#57543F' }}>Trim 8 frames off the intro</p>
                 <div className="mt-1.5 flex items-center gap-1.5">
-                  <div className="flex-1 h-5 rounded-md bg-zinc-950 border border-zinc-800 px-1.5 flex items-center text-[9px] text-zinc-600">
+                  <div className="flex-1 h-5 rounded-md px-1.5 flex items-center text-[9px]" style={{ backgroundColor: PAPER, border: `1px solid ${HAIRLINE}`, color: '#B4AF9B' }}>
                     Reply…
                   </div>
-                  <Send className="w-3 h-3 text-amber-400 shrink-0" />
+                  <Send className="w-3 h-3 shrink-0" style={{ color: '#B4790A' }} />
                 </div>
               </motion.div>
 
-              <div className="absolute bottom-3 left-3 right-3 h-1.5 rounded-full bg-zinc-700/80 overflow-hidden">
-                <div className="h-full w-2/5 bg-gradient-to-r from-teal-500 to-cyan-400" />
+              <div className="absolute bottom-3 left-3 right-3 h-1.5 rounded-full overflow-hidden" style={{ backgroundColor: 'rgba(20,20,15,0.15)' }}>
+                <div className="h-full w-2/5" style={{ backgroundColor: REC }} />
               </div>
             </div>
-            <div className="p-4 space-y-3 bg-zinc-950/40 border-t md:border-t-0 md:border-l border-zinc-800">
+            <div className="p-4 space-y-3" style={{ backgroundColor: PAPER, borderTop: `1px solid ${HAIRLINE}`, borderLeft: `1px solid ${HAIRLINE}` }}>
               {[
-                { name: 'Ari M.', text: 'Logo pops too fast here', color: 'teal' },
-                { name: 'Owner Demo', text: 'Trim 8 frames off the intro', color: 'amber' },
-                { name: 'Client Review', text: 'Approved — ship it', color: 'emerald' },
+                { name: 'Ari M.', text: 'Logo pops too fast here' },
+                { name: 'Owner Demo', text: 'Trim 8 frames off the intro' },
+                { name: 'Client Review', text: 'Approved — ship it' },
               ].map((c, i) => (
-                <div key={i} className="p-2.5 rounded-xl bg-zinc-900 border border-zinc-800 text-xs">
+                <div key={i} className="p-2.5 rounded-xl text-xs" style={{ backgroundColor: '#fff', border: `1px solid ${HAIRLINE}` }}>
                   <div className="flex items-center justify-between mb-1">
-                    <span className="font-semibold text-zinc-200">{c.name}</span>
-                    <CheckCircle2 className="w-3 h-3 text-emerald-500" />
+                    <span className="font-semibold">{c.name}</span>
+                    <CheckCircle2 className="w-3 h-3" style={{ color: TEAL }} />
                   </div>
-                  <p className="text-zinc-400">{c.text}</p>
+                  <p style={{ color: '#57543F' }}>{c.text}</p>
                 </div>
               ))}
             </div>
@@ -529,8 +685,38 @@ export function LandingPage() {
         </motion.div>
       </section>
 
+      {/* ===== Roles ===== */}
+      <section className="relative px-6 lg:px-12 py-20" style={{ backgroundColor: '#fff', borderTop: `1px solid ${HAIRLINE}`, borderBottom: `1px solid ${HAIRLINE}` }}>
+        <motion.div
+          initial="hidden"
+          whileInView="show"
+          viewport={{ once: true, margin: '-100px' }}
+          variants={fadeUp}
+          className="max-w-2xl mx-auto text-center mb-14"
+        >
+          <h2 className="font-display text-2xl sm:text-3xl font-black tracking-tight">Built for every seat in the review</h2>
+        </motion.div>
+        <motion.div
+          variants={stagger}
+          initial="hidden"
+          whileInView="show"
+          viewport={{ once: true, margin: '-100px' }}
+          className="max-w-4xl mx-auto grid grid-cols-1 sm:grid-cols-3 gap-5"
+        >
+          {ROLES.map((r) => (
+            <motion.div key={r.title} variants={fadeUp} className="text-center rounded-2xl p-6" style={{ border: `1px solid ${HAIRLINE}`, backgroundColor: PAPER }}>
+              <div className="w-11 h-11 rounded-xl flex items-center justify-center mx-auto mb-4" style={{ backgroundColor: '#EFEDE4', color: INK }}>
+                <r.icon className="w-5 h-5" />
+              </div>
+              <h3 className="font-semibold">{r.title}</h3>
+              <p className="mt-1.5 text-sm leading-relaxed" style={{ color: '#57543F' }}>{r.desc}</p>
+            </motion.div>
+          ))}
+        </motion.div>
+      </section>
+
       {/* ===== How it works ===== */}
-      <section className="relative z-10 px-6 lg:px-12 py-24 bg-zinc-950/40 border-y border-zinc-800/60">
+      <section id="how-it-works" className="relative px-6 lg:px-12 py-24">
         <motion.div
           variants={stagger}
           initial="hidden"
@@ -539,18 +725,17 @@ export function LandingPage() {
           className="max-w-5xl mx-auto grid grid-cols-1 sm:grid-cols-3 gap-10"
         >
           {STEPS.map((s) => (
-            <motion.div key={s.n} variants={fadeUp} className="text-center sm:text-left">
-              <div className="text-5xl font-bold text-zinc-800">{s.n}</div>
-              <h3 className="mt-3 font-semibold text-lg text-zinc-100">{s.title}</h3>
-              <p className="mt-2 text-sm text-zinc-400 leading-relaxed">{s.desc}</p>
+            <motion.div key={s.n} variants={fadeUp}>
+              <div className="font-display text-5xl font-black" style={{ color: '#E4DFD1' }}>{s.n}</div>
+              <h3 className="mt-3 font-semibold text-lg">{s.title}</h3>
+              <p className="mt-2 text-sm leading-relaxed" style={{ color: '#57543F' }}>{s.desc}</p>
             </motion.div>
           ))}
         </motion.div>
       </section>
 
       {/* ===== CTA ===== */}
-      <section className="relative z-10 px-6 lg:px-12 py-28 text-center overflow-hidden">
-        <div className="absolute inset-0 bg-[radial-gradient(ellipse_60%_60%_at_50%_50%,rgba(13,148,136,0.14),transparent_70%)]" />
+      <section className="relative px-6 lg:px-12 py-28 text-center overflow-hidden" style={{ backgroundColor: INK, color: PAPER }}>
         <motion.div
           initial="hidden"
           whileInView="show"
@@ -558,30 +743,29 @@ export function LandingPage() {
           variants={fadeUp}
           className="relative max-w-xl mx-auto"
         >
-          <h2 className="text-3xl sm:text-4xl font-bold tracking-tight">
+          <h2 className="font-display text-3xl sm:text-4xl font-black tracking-tight">
             {user ? 'Pick up right where you left off' : 'Stop reviewing over text messages'}
           </h2>
-          <p className="mt-4 text-zinc-400">
+          <p className="mt-4" style={{ color: '#B4AF9B' }}>
             {user
               ? 'Your projects and reviews are waiting in the dashboard.'
               : 'Free to start. No credit card. Invite your first reviewer in under a minute.'}
           </p>
           <Link
             href={user ? '/dashboard' : '/register'}
-            className="mt-8 inline-flex items-center gap-2 px-7 py-3.5 rounded-xl bg-gradient-to-r from-teal-500 to-cyan-600 hover:from-teal-400 hover:to-cyan-500 text-white font-semibold shadow-xl shadow-teal-600/30 transition-all hover:scale-[1.03]"
+            className="mt-8 inline-flex items-center gap-2 px-7 py-3.5 rounded-lg font-semibold transition-transform hover:scale-[1.03]"
+            style={{ backgroundColor: REC, color: '#fff' }}
           >
-            {user ? 'Go to Dashboard' : 'Create Free Account'} <ArrowRight className="w-4 h-4" />
+            {user ? 'Go to dashboard' : 'Create free account'} <ArrowRight className="w-4 h-4" />
           </Link>
         </motion.div>
       </section>
 
       {/* ===== Footer ===== */}
-      <footer className="relative z-10 px-6 lg:px-12 py-8 border-t border-zinc-800/60 flex flex-col sm:flex-row items-center justify-between gap-3 text-xs text-zinc-500">
+      <footer className="relative px-6 lg:px-12 py-8 flex flex-col sm:flex-row items-center justify-between gap-3 text-xs" style={{ color: '#8C8874' }}>
         <div className="flex items-center gap-2">
-          <div className="w-5 h-5 rounded-md bg-gradient-to-br from-teal-500 to-cyan-700 flex items-center justify-center">
-            <Sparkles className="w-2.5 h-2.5 text-white" />
-          </div>
-          <span>Frame<span className="text-teal-400">Bit</span> — Private Video Review & Collaboration</span>
+          <LogoMark size="w-5 h-5" />
+          <span>Frame<span style={{ color: REC }}>Bit</span> — Private Video Review & Collaboration</span>
         </div>
         <span>© {new Date().getFullYear()} FrameBit. All rights reserved.</span>
       </footer>

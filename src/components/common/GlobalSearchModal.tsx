@@ -142,7 +142,7 @@ export function GlobalSearchModal({
           {results.projects.length > 0 && (
             <div>
               <div className="text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-zinc-500 px-3 mb-1.5 flex items-center gap-1.5">
-                <FolderKanban className="w-3.5 h-3.5 text-teal-600 dark:text-teal-400" /> Projects ({results.projects.length})
+                <FolderKanban className="w-3.5 h-3.5 text-brand-600 dark:text-teal-400" /> Projects ({results.projects.length})
               </div>
               <div className="space-y-1">
                 {results.projects.map((p) => (
@@ -155,7 +155,7 @@ export function GlobalSearchModal({
                     className="w-full flex items-center justify-between p-2.5 rounded-xl hover:bg-slate-100 dark:hover:bg-zinc-800/80 text-left transition-colors group"
                   >
                     <div>
-                      <div className="text-sm font-medium text-slate-800 dark:text-zinc-200 group-hover:text-teal-600 dark:group-hover:text-teal-400">
+                      <div className="text-sm font-medium text-slate-800 dark:text-zinc-200 group-hover:text-brand-600 dark:group-hover:text-teal-400">
                         {p.name}
                       </div>
                       {p.description && (
@@ -173,7 +173,7 @@ export function GlobalSearchModal({
           {results.videos.length > 0 && (
             <div>
               <div className="text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-zinc-500 px-3 mb-1.5 flex items-center gap-1.5">
-                <Film className="w-3.5 h-3.5 text-teal-600 dark:text-teal-400" /> Videos ({results.videos.length})
+                <Film className="w-3.5 h-3.5 text-brand-600 dark:text-teal-400" /> Videos ({results.videos.length})
               </div>
               <div className="space-y-1">
                 {results.videos.map((v) => (
@@ -186,7 +186,7 @@ export function GlobalSearchModal({
                     className="w-full flex items-center justify-between p-2.5 rounded-xl hover:bg-slate-100 dark:hover:bg-zinc-800/80 text-left transition-colors group"
                   >
                     <div>
-                      <div className="text-sm font-medium text-slate-800 dark:text-zinc-200 group-hover:text-teal-600 dark:group-hover:text-teal-400 flex items-center gap-2">
+                      <div className="text-sm font-medium text-slate-800 dark:text-zinc-200 group-hover:text-brand-600 dark:group-hover:text-teal-400 flex items-center gap-2">
                         {v.name}
                         <span className="text-[10px] px-1.5 py-0.5 rounded bg-slate-100 dark:bg-zinc-800 text-slate-600 dark:text-zinc-400 border border-slate-200 dark:border-zinc-700">
                           v{v.version}
@@ -205,7 +205,7 @@ export function GlobalSearchModal({
           {results.comments.length > 0 && (
             <div>
               <div className="text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-zinc-500 px-3 mb-1.5 flex items-center gap-1.5">
-                <MessageSquare className="w-3.5 h-3.5 text-teal-600 dark:text-teal-400" /> Comments ({results.comments.length})
+                <MessageSquare className="w-3.5 h-3.5 text-brand-600 dark:text-teal-400" /> Comments ({results.comments.length})
               </div>
               <div className="space-y-1">
                 {results.comments.map((c) => (
@@ -220,7 +220,7 @@ export function GlobalSearchModal({
                     <div>
                       <div className="text-xs font-medium text-slate-600 dark:text-zinc-400 flex items-center gap-2">
                         <span>{c.author}</span>
-                        <span className="text-teal-600 dark:text-teal-400 font-mono">@{formatTimecode(c.timestamp)}</span>
+                        <span className="text-brand-600 dark:text-teal-400 font-mono">@{formatTimecode(c.timestamp)}</span>
                         <span className="text-slate-400 dark:text-zinc-600">• on {c.assetName}</span>
                       </div>
                       <div className="text-sm text-slate-800 dark:text-zinc-200 line-clamp-1 mt-0.5">&ldquo;{c.text}&rdquo;</div>

@@ -242,6 +242,7 @@ export function VideoPlayer({
   const [activeTool, setActiveTool] = useState<ActiveTool>(null);
   const [drawColor, setDrawColor] = useState<string>('#06b6d4');
   const [drawStrokeWidth, setDrawStrokeWidth] = useState<number>(0.8);
+  const [showAnnotationTools, setShowAnnotationTools] = useState(false);
 
   // Drawing state
   const isDrawingRef = useRef(false);
@@ -743,7 +744,7 @@ export function VideoPlayer({
       className={`space-y-3 ${isFullscreen ? 'h-full w-full bg-zinc-950 flex flex-col justify-center p-3' : ''}`}
     >
       <div
-        className="relative flex flex-col bg-zinc-950 rounded-2xl overflow-hidden border border-zinc-800/80 shadow-2xl group select-none"
+        className="relative flex flex-col bg-white dark:bg-zinc-950 rounded-2xl overflow-hidden border border-slate-200 dark:border-zinc-800/80 shadow-2xl group select-none"
       >
       {/* Video Viewport with Interactive Spatial Pin & Drawing Overlay */}
       <div
@@ -1236,7 +1237,7 @@ export function VideoPlayer({
       </div>
 
       {/* Control Bar & Timeline */}
-      <div className="bg-zinc-950/95 border-t border-zinc-800/80 p-3.5 space-y-3">
+      <div className="bg-white dark:bg-zinc-950/95 border-t border-slate-200 dark:border-zinc-800/80 p-3.5 space-y-3">
         {/* Interactive Timeline Track with Hold & Slide Scrubber */}
         <div
           ref={timelineRef}
@@ -1253,17 +1254,17 @@ export function VideoPlayer({
           className="relative h-7 flex items-center cursor-pointer group/timeline touch-none"
         >
           {/* Track background */}
-          <div className="w-full h-2 bg-zinc-800/90 rounded-full overflow-hidden relative group-hover/timeline:h-2.5 transition-all">
+          <div className="w-full h-2 bg-slate-200 dark:bg-zinc-800/90 rounded-full overflow-hidden relative group-hover/timeline:h-2.5 transition-all">
             {/* Progress Fill */}
             <div
-              className="h-full bg-gradient-to-r from-teal-600 to-cyan-500 rounded-full"
+              className="h-full bg-gradient-to-r from-brand-600 to-brand-400 dark:from-teal-600 dark:to-cyan-500 rounded-full"
               style={{ width: `${progressPercent}%` }}
             />
 
             {/* Range Selection Highlight (from the composer's Start → live playhead) */}
             {activeDraftPin && liveRangeEnd !== null && duration > 0 && (
               <div
-                className="absolute top-0 h-full bg-teal-400/40 border-x-2 border-teal-400"
+                className="absolute top-0 h-full bg-brand-400/40 border-x-2 border-brand-400 dark:bg-teal-400/40 dark:border-teal-400"
                 style={{
                   left: `${(Math.min(activeDraftPin.timestamp, liveRangeEnd) / duration) * 100}%`,
                   width: `${(Math.abs(liveRangeEnd - activeDraftPin.timestamp) / duration) * 100}%`,
@@ -1291,8 +1292,8 @@ export function VideoPlayer({
 
           {/* Scrubber Playhead Handle */}
           <div
-            className={`absolute top-1/2 -translate-y-1/2 w-4 h-4 rounded-full bg-white shadow-xl border-2 border-teal-500 -ml-2 pointer-events-none transition-transform ${
-              isScrubbing ? 'scale-150 ring-4 ring-teal-500/30' : 'group-hover/timeline:scale-125'
+            className={`absolute top-1/2 -translate-y-1/2 w-4 h-4 rounded-full bg-white shadow-xl border-2 border-brand-500 dark:border-teal-500 -ml-2 pointer-events-none transition-transform ${
+              isScrubbing ? 'scale-150 ring-4 ring-brand-500/30 dark:ring-teal-500/30' : 'group-hover/timeline:scale-125'
             }`}
             style={{ left: `${progressPercent}%` }}
           />
@@ -1363,13 +1364,13 @@ export function VideoPlayer({
         </div>
 
         {/* Lower Controller Bar */}
-        <div className="flex items-center justify-between gap-3 flex-wrap">
+        <div className="relative flex items-center justify-between gap-3 flex-wrap">
           {/* Left Controls: Play, Step Frames, Timecode */}
           <div className="flex items-center gap-2 sm:gap-3 shrink-0">
             {/* Play / Pause */}
             <button
               onClick={togglePlay}
-              className="p-2 rounded-xl bg-teal-600 hover:bg-teal-500 text-white shadow-md shadow-teal-600/20 transition-all shrink-0 cursor-pointer"
+              className="p-2 rounded-xl bg-brand-600 hover:bg-brand-500 dark:bg-teal-600 dark:hover:bg-teal-500 text-white shadow-md shadow-brand-600/20 dark:shadow-teal-600/20 transition-all shrink-0 cursor-pointer"
               title={isPlaying ? 'Pause (Space)' : 'Play (Space)'}
             >
               {isPlaying ? <Pause className="w-4 h-4 fill-white" /> : <Play className="w-4 h-4 fill-white" />}
@@ -1378,7 +1379,7 @@ export function VideoPlayer({
             {/* Frame Step Back */}
             <button
               onClick={() => stepFrames(-1)}
-              className="p-1.5 rounded-lg text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800 transition-colors shrink-0 cursor-pointer"
+              className="p-1.5 rounded-lg text-slate-500 dark:text-zinc-400 hover:text-slate-800 dark:hover:text-zinc-200 hover:bg-slate-100 dark:hover:bg-zinc-800 transition-colors shrink-0 cursor-pointer"
               title="Previous Frame (Left Arrow / J)"
             >
               <ChevronLeft className="w-4 h-4" />
@@ -1387,7 +1388,7 @@ export function VideoPlayer({
             {/* Frame Step Forward */}
             <button
               onClick={() => stepFrames(1)}
-              className="p-1.5 rounded-lg text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800 transition-colors shrink-0 cursor-pointer"
+              className="p-1.5 rounded-lg text-slate-500 dark:text-zinc-400 hover:text-slate-800 dark:hover:text-zinc-200 hover:bg-slate-100 dark:hover:bg-zinc-800 transition-colors shrink-0 cursor-pointer"
               title="Next Frame (Right Arrow / L)"
             >
               <ChevronRight className="w-4 h-4" />
@@ -1396,22 +1397,37 @@ export function VideoPlayer({
             {/* Timecode and Frame Number Display */}
             <button
               onClick={() => setShowSMPTE(!showSMPTE)}
-              className="flex items-center gap-1 px-2.5 py-1 rounded-lg bg-zinc-900 border border-zinc-800 text-xs font-mono text-zinc-300 hover:border-zinc-700 transition-colors shrink-0 cursor-pointer"
+              className="flex items-center gap-1 px-2.5 py-1 rounded-lg bg-slate-100 dark:bg-zinc-900 border border-slate-200 dark:border-zinc-800 text-xs font-mono text-slate-700 dark:text-zinc-300 hover:border-slate-300 dark:hover:border-zinc-700 transition-colors shrink-0 cursor-pointer"
               title="Click to toggle SMPTE timecode / standard"
             >
-              <span className="font-semibold text-teal-400">
+              <span className="font-semibold text-brand-600 dark:text-teal-400">
                 {showSMPTE ? formatSMPTETimecode(currentTime, fps) : formatTimecode(currentTime)}
               </span>
-              <span className="text-zinc-600">/</span>
-              <span className="text-zinc-500">
+              <span className="text-slate-400 dark:text-zinc-600">/</span>
+              <span className="text-slate-400 dark:text-zinc-500">
                 {showSMPTE ? formatSMPTETimecode(duration, fps) : formatDuration(duration)}
               </span>
-              <span className="text-[10px] text-zinc-500 ml-0.5">({currentFrame}f)</span>
+              <span className="text-[10px] text-slate-400 dark:text-zinc-500 ml-0.5">({currentFrame}f)</span>
+            </button>
+
+            {/* Annotation Tools Toggle */}
+            <button
+              type="button"
+              onClick={() => setShowAnnotationTools((v) => !v)}
+              className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-semibold border transition-all shrink-0 cursor-pointer ${
+                showAnnotationTools || activeTool
+                  ? 'bg-brand-600 dark:bg-teal-600 border-brand-600 dark:border-teal-600 text-white shadow-md shadow-brand-600/30 dark:shadow-teal-600/30'
+                  : 'bg-slate-100 dark:bg-zinc-900 border-slate-200 dark:border-zinc-800 text-slate-600 dark:text-zinc-400 hover:text-slate-900 dark:hover:text-zinc-200'
+              }`}
+              title="Annotation tools — pin, draw, shapes (P/D/R/O/A)"
+            >
+              <Pencil className="w-3.5 h-3.5" />
+              <span className="hidden sm:inline">Annotate</span>
             </button>
           </div>
 
           {/* Center 3-Way Annotation Filter Switch on Video Canvas */}
-          <div className="flex items-center bg-zinc-900 p-1 rounded-xl border border-zinc-800 shrink-0 text-xs">
+          <div className="flex items-center bg-slate-100 dark:bg-zinc-900 p-1 rounded-xl border border-slate-200 dark:border-zinc-800 shrink-0 text-xs">
             {(['all', 'active', 'resolved'] as const).map((mode) => (
               <button
                 key={mode}
@@ -1423,8 +1439,8 @@ export function VideoPlayer({
                       ? 'bg-emerald-600 text-white shadow-sm font-semibold'
                       : mode === 'active'
                       ? 'bg-amber-600 text-white shadow-sm font-semibold'
-                      : 'bg-teal-600 text-white shadow-sm font-semibold'
-                    : 'text-zinc-400 hover:text-zinc-200'
+                      : 'bg-brand-600 dark:bg-teal-600 text-white shadow-sm font-semibold'
+                    : 'text-slate-500 dark:text-zinc-400 hover:text-slate-800 dark:hover:text-zinc-200'
                 }`}
                 title={`Show ${
                   mode === 'all'
@@ -1443,10 +1459,10 @@ export function VideoPlayer({
           <div className="flex items-center gap-2 shrink-0">
             {/* Speed Selector */}
             <div className="relative group/speed shrink-0">
-              <button className="px-2 py-1 rounded-lg bg-zinc-900 border border-zinc-800 text-xs font-mono text-zinc-400 hover:text-zinc-200 transition-colors cursor-pointer">
+              <button className="px-2 py-1 rounded-lg bg-slate-100 dark:bg-zinc-900 border border-slate-200 dark:border-zinc-800 text-xs font-mono text-slate-500 dark:text-zinc-400 hover:text-slate-800 dark:hover:text-zinc-200 transition-colors cursor-pointer">
                 {playbackSpeed}x
               </button>
-              <div className="hidden group-hover/speed:flex absolute bottom-full right-0 mb-1 flex-col bg-zinc-900 border border-zinc-800 rounded-xl p-1 shadow-2xl z-50">
+              <div className="hidden group-hover/speed:flex absolute bottom-full right-0 mb-1 flex-col bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-800 rounded-xl p-1 shadow-2xl z-50">
                 {[0.5, 0.75, 1, 1.25, 1.5, 2].map((spd) => (
                   <button
                     key={spd}
@@ -1455,7 +1471,7 @@ export function VideoPlayer({
                       if (videoRef.current) videoRef.current.playbackRate = spd;
                     }}
                     className={`px-3 py-1 text-xs font-mono rounded-lg text-left transition-colors cursor-pointer ${
-                      playbackSpeed === spd ? 'bg-teal-600 text-white' : 'text-zinc-400 hover:bg-zinc-800'
+                      playbackSpeed === spd ? 'bg-brand-600 dark:bg-teal-600 text-white' : 'text-slate-500 dark:text-zinc-400 hover:bg-slate-100 dark:hover:bg-zinc-800'
                     }`}
                   >
                     {spd}x
@@ -1472,7 +1488,7 @@ export function VideoPlayer({
                   setIsMuted(nextMuted);
                   if (videoRef.current) videoRef.current.muted = nextMuted;
                 }}
-                className="p-1.5 text-zinc-400 hover:text-zinc-200 rounded-lg hover:bg-zinc-800 transition-colors cursor-pointer"
+                className="p-1.5 text-slate-500 dark:text-zinc-400 hover:text-slate-800 dark:hover:text-zinc-200 rounded-lg hover:bg-slate-100 dark:hover:bg-zinc-800 transition-colors cursor-pointer"
                 title="Mute / Unmute (M)"
               >
                 {isMuted || volume === 0 ? <VolumeX className="w-4 h-4" /> : <Volume2 className="w-4 h-4" />}
@@ -1492,25 +1508,25 @@ export function VideoPlayer({
                     videoRef.current.muted = false;
                   }
                 }}
-                className="w-14 sm:w-16 h-1 bg-zinc-800 accent-teal-500 rounded-lg cursor-pointer"
+                className="w-14 sm:w-16 h-1 bg-slate-200 dark:bg-zinc-800 accent-brand-500 dark:accent-teal-500 rounded-lg cursor-pointer"
               />
             </div>
 
             {/* Fullscreen */}
             <button
               onClick={toggleFullscreen}
-              className="p-1.5 text-zinc-400 hover:text-zinc-200 rounded-lg hover:bg-zinc-800 transition-colors shrink-0 cursor-pointer"
+              className="p-1.5 text-slate-500 dark:text-zinc-400 hover:text-slate-800 dark:hover:text-zinc-200 rounded-lg hover:bg-slate-100 dark:hover:bg-zinc-800 transition-colors shrink-0 cursor-pointer"
               title="Fullscreen (F)"
             >
               {isFullscreen ? <Minimize2 className="w-4 h-4" /> : <Maximize2 className="w-4 h-4" />}
             </button>
           </div>
-        </div>
-      </div>
-    </div>
 
-      {/* Dedicated Shapes & Annotation Studio Toolbar (Located directly where shortcuts was) */}
-      <div className="p-2.5 sm:p-3 rounded-2xl bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-800/80 shadow-md flex items-center justify-between gap-3 flex-wrap">
+          {/* Annotation Tools Popup */}
+          {showAnnotationTools && (
+            <>
+              <div className="fixed inset-0 z-30" onClick={() => setShowAnnotationTools(false)} />
+              <div className="absolute bottom-full left-0 right-0 mb-2 z-40 p-2.5 sm:p-3 rounded-2xl bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-800/80 shadow-2xl flex items-center justify-between gap-3 flex-wrap animate-in fade-in slide-in-from-bottom-2 duration-150">
         {/* Left: Tools & Shapes Selection */}
         <div className="flex items-center gap-2 flex-wrap">
           <div className="flex items-center bg-slate-100 dark:bg-zinc-950 p-1 rounded-xl border border-slate-200 dark:border-zinc-800 gap-0.5">
@@ -1523,7 +1539,7 @@ export function VideoPlayer({
               }}
               className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
                 activeTool === 'pin'
-                  ? 'bg-teal-600 text-white shadow-md shadow-teal-600/30'
+                  ? 'bg-brand-600 dark:bg-teal-600 text-white shadow-md shadow-brand-600/30 dark:shadow-teal-600/30'
                   : 'text-slate-600 dark:text-zinc-400 hover:text-slate-900 dark:hover:text-zinc-200'
               }`}
               title="Point Pin Tool (P)"
@@ -1541,7 +1557,7 @@ export function VideoPlayer({
               }}
               className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
                 activeTool === 'draw'
-                  ? 'bg-teal-600 text-white shadow-md shadow-teal-600/30'
+                  ? 'bg-brand-600 dark:bg-teal-600 text-white shadow-md shadow-brand-600/30 dark:shadow-teal-600/30'
                   : 'text-slate-600 dark:text-zinc-400 hover:text-slate-900 dark:hover:text-zinc-200'
               }`}
               title="Freehand Pen (D)"
@@ -1559,7 +1575,7 @@ export function VideoPlayer({
               }}
               className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
                 activeTool === 'rectangle'
-                  ? 'bg-teal-600 text-white shadow-md shadow-teal-600/30'
+                  ? 'bg-brand-600 dark:bg-teal-600 text-white shadow-md shadow-brand-600/30 dark:shadow-teal-600/30'
                   : 'text-slate-600 dark:text-zinc-400 hover:text-slate-900 dark:hover:text-zinc-200'
               }`}
               title="Rectangle Box (R)"
@@ -1577,7 +1593,7 @@ export function VideoPlayer({
               }}
               className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
                 activeTool === 'circle'
-                  ? 'bg-teal-600 text-white shadow-md shadow-teal-600/30'
+                  ? 'bg-brand-600 dark:bg-teal-600 text-white shadow-md shadow-brand-600/30 dark:shadow-teal-600/30'
                   : 'text-slate-600 dark:text-zinc-400 hover:text-slate-900 dark:hover:text-zinc-200'
               }`}
               title="Circle / Ellipse (O)"
@@ -1595,7 +1611,7 @@ export function VideoPlayer({
               }}
               className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
                 activeTool === 'arrow'
-                  ? 'bg-teal-600 text-white shadow-md shadow-teal-600/30'
+                  ? 'bg-brand-600 dark:bg-teal-600 text-white shadow-md shadow-brand-600/30 dark:shadow-teal-600/30'
                   : 'text-slate-600 dark:text-zinc-400 hover:text-slate-900 dark:hover:text-zinc-200'
               }`}
               title="Arrow Pointer (A)"
@@ -1654,7 +1670,7 @@ export function VideoPlayer({
               step="0.1"
               value={drawStrokeWidth}
               onChange={(e) => setDrawStrokeWidth(parseFloat(e.target.value))}
-              className="w-14 h-1 bg-slate-300 dark:bg-zinc-700 accent-teal-500 rounded-lg cursor-pointer"
+              className="w-14 h-1 bg-slate-300 dark:bg-zinc-700 accent-brand-500 dark:accent-teal-500 rounded-lg cursor-pointer"
               title={`Thickness: ${drawStrokeWidth.toFixed(1)}`}
             />
             <div
@@ -1679,7 +1695,12 @@ export function VideoPlayer({
             <span><kbd className="px-1 py-0.5 rounded bg-slate-200 dark:bg-zinc-800 font-mono text-[9px]">A</kbd> Arrow</span>
           </div>
         </div>
+              </div>
+            </>
+          )}
+        </div>
       </div>
+    </div>
     </div>
   );
 }

@@ -125,7 +125,7 @@ export function NotificationDrawer() {
     switch (type) {
       case 'comment_added':
       case 'comment_reply':
-        return <MessageSquare className="w-4 h-4 text-teal-600 dark:text-teal-400" />;
+        return <MessageSquare className="w-4 h-4 text-brand-600 dark:text-teal-400" />;
       case 'comment_resolved':
       case 'status_changed':
         return <CheckCircle2 className="w-4 h-4 text-emerald-500" />;
@@ -147,7 +147,7 @@ export function NotificationDrawer() {
       >
         <Bell className="w-5 h-5" />
         {unreadCount > 0 && (
-          <span className="absolute top-1.5 right-1.5 flex h-4 w-4 items-center justify-center rounded-full bg-teal-600 text-[10px] font-bold text-white shadow-lg animate-pulse">
+          <span className="absolute top-1.5 right-1.5 flex h-4 w-4 items-center justify-center rounded-full bg-brand-600 dark:bg-teal-600 text-[10px] font-bold text-white shadow-lg animate-pulse">
             {unreadCount > 9 ? '9+' : unreadCount}
           </span>
         )}
@@ -161,7 +161,7 @@ export function NotificationDrawer() {
               <div className="flex items-center gap-2">
                 <span className="font-semibold text-sm text-slate-800 dark:text-zinc-200">Notifications</span>
                 {unreadCount > 0 && (
-                  <span className="text-xs px-2 py-0.5 rounded-full bg-teal-500/10 dark:bg-teal-500/20 text-teal-700 dark:text-teal-400 font-semibold font-mono">
+                  <span className="text-xs px-2 py-0.5 rounded-full bg-brand-500/10 dark:bg-teal-500/20 text-brand-700 dark:text-teal-400 font-semibold font-mono">
                     {unreadCount} new
                   </span>
                 )}
@@ -188,10 +188,10 @@ export function NotificationDrawer() {
                     key={n._id}
                     onClick={() => handleNotificationClick(n)}
                     className={`group p-3.5 flex items-start gap-3 hover:bg-slate-50 dark:hover:bg-zinc-800/60 cursor-pointer transition-colors ${
-                      !n.read ? 'bg-teal-50/60 dark:bg-teal-950/20' : ''
+                      !n.read ? 'bg-brand-50/60 dark:bg-teal-950/20' : ''
                     }`}
                   >
-                    <div className="p-2 rounded-xl bg-slate-100 dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700/50 mt-0.5 shrink-0 group-hover:border-teal-500/40 transition-colors">
+                    <div className="p-2 rounded-xl bg-slate-100 dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700/50 mt-0.5 shrink-0 group-hover:border-brand-500/40 dark:group-hover:border-teal-500/40 transition-colors">
                       {getIcon(n.type)}
                     </div>
                     <div className="flex-1 min-w-0 pr-1">
@@ -206,14 +206,14 @@ export function NotificationDrawer() {
                         <span className="text-[10px] text-slate-400 dark:text-zinc-500 font-mono">
                           {formatRelativeTime(n.createdAt)}
                         </span>
-                        <span className="text-[10px] font-medium text-teal-600 dark:text-teal-400 opacity-0 group-hover:opacity-100 transition-opacity flex items-center gap-0.5">
+                        <span className="text-[10px] font-medium text-brand-600 dark:text-teal-400 opacity-0 group-hover:opacity-100 transition-opacity flex items-center gap-0.5">
                           <span>Open</span>
                           <ChevronRight className="w-3 h-3" />
                         </span>
                       </div>
                     </div>
                     {!n.read && (
-                      <div className="w-2 h-2 rounded-full bg-teal-500 shrink-0 mt-2 self-center ring-4 ring-teal-500/20" />
+                      <div className="w-2 h-2 rounded-full bg-brand-500 dark:bg-teal-500 shrink-0 mt-2 self-center ring-4 ring-brand-500/20 dark:ring-teal-500/20" />
                     )}
                   </div>
                 ))

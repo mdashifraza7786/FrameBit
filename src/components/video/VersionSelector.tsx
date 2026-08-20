@@ -46,9 +46,9 @@ export function VersionSelector({
     <div className="relative">
       <button
         onClick={() => setIsOpen(!isOpen)}
-        className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-slate-100 dark:bg-zinc-900 border border-slate-300 dark:border-zinc-800 hover:border-teal-500/40 text-xs font-semibold text-slate-800 dark:text-zinc-200 transition-colors shadow-sm"
+        className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-slate-100 dark:bg-zinc-900 border border-slate-300 dark:border-zinc-800 hover:border-brand-500/40 dark:hover:border-teal-500/40 text-xs font-semibold text-slate-800 dark:text-zinc-200 transition-colors shadow-sm"
       >
-        <span className="w-2 h-2 rounded-full bg-teal-500 dark:bg-teal-400 animate-pulse" />
+        <span className="w-2 h-2 rounded-full bg-brand-500 dark:bg-teal-400 animate-pulse" />
         <span>Version {currentVersionNumber}</span>
         <ChevronDown className={`w-3.5 h-3.5 text-slate-400 dark:text-zinc-400 transition-transform duration-200 ${isOpen ? 'rotate-180' : ''}`} />
       </button>
@@ -65,7 +65,7 @@ export function VersionSelector({
           <div className="absolute left-0 mt-2 w-72 rounded-2xl bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-700/80 shadow-2xl z-50 overflow-hidden animate-in fade-in slide-in-from-top-2 duration-150">
             <div className="p-3 border-b border-slate-200 dark:border-zinc-800 flex items-center justify-between text-xs text-slate-500 dark:text-zinc-400 font-medium bg-slate-50 dark:bg-zinc-900/90">
               <span className="flex items-center gap-1.5 font-semibold text-slate-700 dark:text-zinc-300">
-                <History className="w-3.5 h-3.5 text-teal-600 dark:text-teal-400" /> Version History
+                <History className="w-3.5 h-3.5 text-brand-600 dark:text-teal-400" /> Version History
               </span>
               <span className="text-[11px] font-mono">{versions.length} cut{versions.length > 1 ? 's' : ''}</span>
             </div>
@@ -80,7 +80,7 @@ export function VersionSelector({
                     key={ver._id}
                     className={`flex items-center justify-between p-2 rounded-xl transition-all ${
                       isSelected
-                        ? 'bg-teal-50 dark:bg-teal-600/20 border border-teal-500/30'
+                        ? 'bg-brand-50 dark:bg-teal-600/20 border border-brand-500/30 dark:border-teal-500/30'
                         : 'hover:bg-slate-50 dark:hover:bg-zinc-800/60'
                     }`}
                   >
@@ -93,11 +93,11 @@ export function VersionSelector({
                       className="flex-1 min-w-0 cursor-pointer pr-2"
                     >
                       <div className="flex items-center gap-2">
-                        <span className={`font-semibold text-xs font-mono ${isSelected ? 'text-teal-700 dark:text-teal-300 font-bold' : 'text-slate-800 dark:text-zinc-200'}`}>
+                        <span className={`font-semibold text-xs font-mono ${isSelected ? 'text-brand-700 dark:text-teal-300 font-bold' : 'text-slate-800 dark:text-zinc-200'}`}>
                           v{ver.versionNumber}
                         </span>
                         {isSelected && (
-                          <span className="text-[9px] px-1.5 py-0.2 rounded bg-teal-500/20 text-teal-600 dark:text-teal-400 font-medium">
+                          <span className="text-[9px] px-1.5 py-0.2 rounded bg-brand-500/20 dark:bg-teal-500/20 text-brand-600 dark:text-teal-400 font-medium">
                             Active
                           </span>
                         )}
@@ -115,7 +115,7 @@ export function VersionSelector({
                     {/* Right actions: Checkmark or Delete Button */}
                     <div className="flex items-center gap-1 shrink-0">
                       {isSelected && !isConfirming && (
-                        <Check className="w-4 h-4 text-teal-600 dark:text-teal-400 mr-1" />
+                        <Check className="w-4 h-4 text-brand-600 dark:text-teal-400 mr-1" />
                       )}
 
                       {isAuthorized && (
@@ -148,7 +148,7 @@ export function VersionSelector({
                     setIsOpen(false);
                     onUploadNewVersion();
                   }}
-                  className="w-full py-2 px-3 rounded-xl bg-teal-600 hover:bg-teal-500 text-white font-medium text-xs flex items-center justify-center gap-1.5 shadow-md shadow-teal-600/20 transition-all"
+                  className="w-full py-2 px-3 rounded-xl bg-brand-600 hover:bg-brand-500 dark:bg-teal-600 dark:hover:bg-teal-500 text-white font-medium text-xs flex items-center justify-center gap-1.5 shadow-md shadow-brand-600/20 dark:shadow-teal-600/20 transition-all"
                 >
                   <Plus className="w-3.5 h-3.5" /> Upload New Version
                 </button>

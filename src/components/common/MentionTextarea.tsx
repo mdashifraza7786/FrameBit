@@ -27,7 +27,7 @@ export function renderWithMentions(text: string): React.ReactNode {
   const parts = text.split(/(@\w[\w\s]*)/g);
   return parts.map((part, i) =>
     part.startsWith('@') ? (
-      <span key={i} className="text-teal-600 dark:text-teal-400 font-semibold bg-teal-500/10 rounded px-0.5">
+      <span key={i} className="text-brand-600 dark:text-teal-400 font-semibold bg-brand-500/10 dark:bg-teal-500/10 rounded px-0.5">
         {part}
       </span>
     ) : (
@@ -162,11 +162,11 @@ export function MentionTextarea({
               }}
               className={`w-full flex items-center gap-2.5 px-3 py-2 text-left transition-colors ${
                 i === selectedIdx
-                  ? 'bg-teal-500/10 dark:bg-teal-600/15'
+                  ? 'bg-brand-500/10 dark:bg-teal-600/15'
                   : 'hover:bg-slate-50 dark:hover:bg-zinc-800'
               }`}
             >
-              <div className="w-6 h-6 rounded-full bg-teal-600/15 border border-teal-500/30 flex items-center justify-center text-teal-700 dark:text-teal-300 text-[10px] font-bold shrink-0">
+              <div className="w-6 h-6 rounded-full bg-brand-600/15 dark:bg-teal-600/15 border border-brand-500/30 dark:border-teal-500/30 flex items-center justify-center text-brand-700 dark:text-teal-300 text-[10px] font-bold shrink-0">
                 {m.name.charAt(0).toUpperCase()}
               </div>
               <div className="min-w-0">

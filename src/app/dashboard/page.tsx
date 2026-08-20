@@ -52,10 +52,10 @@ export default function DashboardPage() {
     <AppLayout>
       <div className="max-w-7xl mx-auto space-y-8 animate-in fade-in duration-200">
         {/* Welcome Banner */}
-        <div className="relative overflow-hidden rounded-3xl bg-gradient-to-r from-teal-900/20 via-slate-100 to-white dark:from-teal-950/40 dark:via-zinc-900/80 dark:to-zinc-950 border border-teal-500/20 p-8 shadow-xl">
+        <div className="relative overflow-hidden rounded-3xl bg-gradient-to-r from-brand-900/10 via-slate-100 to-white dark:from-teal-950/40 dark:via-zinc-900/80 dark:to-zinc-950 border border-brand-500/20 dark:border-teal-500/20 p-8 shadow-xl">
           <div className="relative z-10 flex flex-col md:flex-row md:items-center justify-between gap-6">
             <div className="space-y-1.5">
-              <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-teal-500/10 dark:bg-teal-500/20 text-teal-700 dark:text-teal-300 border border-teal-500/30 text-xs font-semibold">
+              <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-brand-500/10 dark:bg-teal-500/20 text-brand-700 dark:text-teal-300 border border-brand-500/30 dark:border-teal-500/30 text-xs font-semibold">
                 <Sparkles className="w-3.5 h-3.5" /> Workspace Overview
               </div>
               <h1 className="text-2xl sm:text-3xl font-bold tracking-tight text-slate-900 dark:text-white">
@@ -69,7 +69,7 @@ export default function DashboardPage() {
             <div className="flex items-center gap-3">
               <Link
                 href="/projects"
-                className="px-5 py-2.5 rounded-2xl bg-teal-600 hover:bg-teal-500 text-white font-semibold text-xs shadow-lg shadow-teal-600/25 flex items-center gap-2 transition-all"
+                className="px-5 py-2.5 rounded-2xl bg-brand-600 hover:bg-brand-500 dark:bg-teal-600 dark:hover:bg-teal-500 text-white font-semibold text-xs shadow-lg shadow-brand-600/25 dark:shadow-teal-600/25 flex items-center gap-2 transition-all"
               >
                 <Plus className="w-4 h-4" /> New Project
               </Link>
@@ -82,7 +82,7 @@ export default function DashboardPage() {
           <div className="p-5 rounded-2xl bg-white dark:bg-zinc-900/60 border border-slate-200 dark:border-zinc-800/80 backdrop-blur-sm space-y-2 shadow-sm">
             <div className="flex items-center justify-between text-slate-500 dark:text-zinc-400">
               <span className="text-xs font-semibold uppercase tracking-wider">Projects</span>
-              <FolderKanban className="w-4 h-4 text-teal-600 dark:text-teal-400" />
+              <FolderKanban className="w-4 h-4 text-brand-600 dark:text-teal-400" />
             </div>
             <div className="text-2xl font-bold text-slate-900 dark:text-white font-mono">{metrics.totalProjects}</div>
             <span className="text-[11px] text-slate-500 dark:text-zinc-500">Active workspaces</span>
@@ -131,9 +131,9 @@ export default function DashboardPage() {
           <div className="space-y-4">
             <div className="flex items-center justify-between">
               <h2 className="text-base font-bold text-slate-800 dark:text-zinc-100 flex items-center gap-2">
-                <FolderKanban className="w-4 h-4 text-teal-600 dark:text-teal-400" /> Recent Projects
+                <FolderKanban className="w-4 h-4 text-brand-600 dark:text-teal-400" /> Recent Projects
               </h2>
-              <Link href="/projects" className="text-xs text-teal-600 dark:text-teal-400 hover:underline font-semibold">
+              <Link href="/projects" className="text-xs text-brand-600 dark:text-teal-400 hover:underline font-semibold">
                 View all →
               </Link>
             </div>
@@ -141,7 +141,7 @@ export default function DashboardPage() {
             <div className="space-y-3">
               {loading ? (
                 <div className="flex items-center justify-center p-8">
-                  <div className="w-6 h-6 border-2 border-teal-500/30 border-t-teal-500 rounded-full animate-spin" />
+                  <div className="w-6 h-6 border-2 border-brand-500/30 border-t-brand-500 dark:border-teal-500/30 dark:border-t-teal-500 rounded-full animate-spin" />
                 </div>
               ) : !data?.recentProjects || data.recentProjects.length === 0 ? (
                 <div className="p-8 rounded-2xl bg-white dark:bg-zinc-900/40 border border-slate-200 dark:border-zinc-800/60 text-center space-y-2">
@@ -149,7 +149,7 @@ export default function DashboardPage() {
                   <p className="text-xs text-slate-500 dark:text-zinc-400">No projects created yet.</p>
                   <Link
                     href="/projects"
-                    className="inline-block text-xs text-teal-600 dark:text-teal-400 font-semibold hover:underline"
+                    className="inline-block text-xs text-brand-600 dark:text-teal-400 font-semibold hover:underline"
                   >
                     Create your first project
                   </Link>
@@ -159,10 +159,10 @@ export default function DashboardPage() {
                   <Link
                     key={proj.id}
                     href={`/projects/${proj.id}`}
-                    className="block p-4 rounded-2xl bg-white dark:bg-zinc-900 hover:bg-slate-100 dark:hover:bg-zinc-800 border border-slate-200 dark:border-zinc-800 hover:border-teal-500/40 dark:hover:border-teal-500/40 transition-all group shadow-sm"
+                    className="block p-4 rounded-2xl bg-white dark:bg-zinc-900 hover:bg-slate-100 dark:hover:bg-zinc-800 border border-slate-200 dark:border-zinc-800 hover:border-brand-500/40 dark:hover:border-teal-500/40 transition-all group shadow-sm"
                   >
                     <div className="flex items-center justify-between mb-1.5">
-                      <span className="font-semibold text-sm text-slate-800 dark:text-zinc-200 group-hover:text-teal-600 dark:group-hover:text-teal-400 transition-colors">
+                      <span className="font-semibold text-sm text-slate-800 dark:text-zinc-200 group-hover:text-brand-600 dark:group-hover:text-teal-400 transition-colors">
                         {proj.name}
                       </span>
                       <ArrowUpRight className="w-4 h-4 text-slate-400 dark:text-zinc-600 group-hover:text-slate-700 dark:group-hover:text-zinc-300 group-hover:translate-x-0.5 group-hover:-translate-y-0.5 transition-all" />
@@ -184,14 +184,14 @@ export default function DashboardPage() {
           <div className="lg:col-span-2 space-y-4">
             <div className="flex items-center justify-between">
               <h2 className="text-base font-bold text-slate-800 dark:text-zinc-100 flex items-center gap-2">
-                <Film className="w-4 h-4 text-teal-600 dark:text-teal-400" /> Active Video Queue
+                <Film className="w-4 h-4 text-brand-600 dark:text-teal-400" /> Active Video Queue
               </h2>
             </div>
 
             <div className="space-y-3">
               {loading ? (
                 <div className="flex items-center justify-center p-8">
-                  <div className="w-6 h-6 border-2 border-teal-500/30 border-t-teal-500 rounded-full animate-spin" />
+                  <div className="w-6 h-6 border-2 border-brand-500/30 border-t-brand-500 dark:border-teal-500/30 dark:border-t-teal-500 rounded-full animate-spin" />
                 </div>
               ) : !data?.recentVideos || data.recentVideos.length === 0 ? (
                 <div className="p-12 rounded-2xl bg-white dark:bg-zinc-900/40 border border-slate-200 dark:border-zinc-800/60 text-center space-y-2">
@@ -206,10 +206,10 @@ export default function DashboardPage() {
                   <Link
                     key={vid.id}
                     href={`/projects/${vid.projectId}/videos/${vid.id}`}
-                    className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 p-4 rounded-2xl bg-white dark:bg-zinc-900 hover:bg-slate-100 dark:hover:bg-zinc-800 border border-slate-200 dark:border-zinc-800 hover:border-teal-500/40 dark:hover:border-teal-500/40 transition-all group shadow-sm"
+                    className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 p-4 rounded-2xl bg-white dark:bg-zinc-900 hover:bg-slate-100 dark:hover:bg-zinc-800 border border-slate-200 dark:border-zinc-800 hover:border-brand-500/40 dark:hover:border-teal-500/40 transition-all group shadow-sm"
                   >
                     <div className="flex items-center gap-3.5 min-w-0">
-                      <div className="w-14 h-9 rounded-xl bg-slate-900 dark:bg-zinc-950 border border-slate-300 dark:border-zinc-800 flex items-center justify-center text-teal-600 dark:text-teal-400 shrink-0 overflow-hidden relative shadow-sm">
+                      <div className="w-14 h-9 rounded-xl bg-slate-900 dark:bg-zinc-950 border border-slate-300 dark:border-zinc-800 flex items-center justify-center text-brand-500 dark:text-teal-400 shrink-0 overflow-hidden relative shadow-sm">
                         <img
                           src={vid.thumbnailUrl || `/api/videos/${vid.id}/thumbnail`}
                           alt={vid.name}
@@ -224,7 +224,7 @@ export default function DashboardPage() {
                       </div>
                       <div className="min-w-0">
                         <div className="flex items-center gap-2">
-                          <span className="font-semibold text-sm text-slate-800 dark:text-zinc-200 group-hover:text-teal-600 dark:group-hover:text-teal-400 transition-colors truncate">
+                          <span className="font-semibold text-sm text-slate-800 dark:text-zinc-200 group-hover:text-brand-600 dark:group-hover:text-teal-400 transition-colors truncate">
                             {vid.name}
                           </span>
                           <span className="text-[10px] px-1.5 py-0.5 rounded bg-slate-100 dark:bg-zinc-800 text-slate-600 dark:text-zinc-400 border border-slate-200 dark:border-zinc-700 font-mono">

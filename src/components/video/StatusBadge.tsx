@@ -21,14 +21,14 @@ export function StatusBadge({ status, canChangeStatus = false, onStatusChange }:
     switch (st) {
       case 'Approved':
         return {
-          bg: 'bg-emerald-950/40 border-emerald-500/40 text-emerald-400',
-          dot: 'bg-emerald-400 shadow-emerald-400/50',
+          bg: 'bg-emerald-50 dark:bg-emerald-950/40 border-emerald-500/40 text-emerald-700 dark:text-emerald-400',
+          dot: 'bg-emerald-500 dark:bg-emerald-400 shadow-emerald-400/50',
           icon: CheckCircle2,
         };
       case 'Changes Requested':
         return {
-          bg: 'bg-amber-950/40 border-amber-500/40 text-amber-400',
-          dot: 'bg-amber-400 shadow-amber-400/50',
+          bg: 'bg-amber-50 dark:bg-amber-950/40 border-amber-500/40 text-amber-700 dark:text-amber-400',
+          dot: 'bg-amber-500 dark:bg-amber-400 shadow-amber-400/50',
           icon: AlertCircle,
         };
       case 'Updated':
@@ -96,13 +96,13 @@ export function StatusBadge({ status, canChangeStatus = false, onStatusChange }:
 
       {/* Reviewer Action Buttons */}
       {canChangeStatus && (
-        <div className="flex items-center gap-1.5 bg-zinc-900 border border-zinc-800 p-1 rounded-xl">
+        <div className="flex items-center gap-1.5 bg-slate-100 dark:bg-zinc-900 border border-slate-200 dark:border-zinc-800 p-1 rounded-xl">
           <button
             onClick={() => handleAction('Changes Requested')}
             className={`px-2.5 py-1 rounded-lg text-xs font-medium transition-colors flex items-center gap-1 ${
               status === 'Changes Requested'
-                ? 'bg-amber-500/20 text-amber-300'
-                : 'text-zinc-400 hover:text-amber-300 hover:bg-zinc-800'
+                ? 'bg-amber-500/20 text-amber-700 dark:text-amber-300'
+                : 'text-slate-500 dark:text-zinc-400 hover:text-amber-600 dark:hover:text-amber-300 hover:bg-slate-200 dark:hover:bg-zinc-800'
             }`}
           >
             <AlertTriangle className="w-3 h-3" /> Request Changes
@@ -111,8 +111,8 @@ export function StatusBadge({ status, canChangeStatus = false, onStatusChange }:
             onClick={() => handleAction('Approved')}
             className={`px-2.5 py-1 rounded-lg text-xs font-medium transition-colors flex items-center gap-1 ${
               status === 'Approved'
-                ? 'bg-emerald-500/20 text-emerald-300'
-                : 'text-zinc-400 hover:text-emerald-300 hover:bg-zinc-800'
+                ? 'bg-emerald-500/20 text-emerald-700 dark:text-emerald-300'
+                : 'text-slate-500 dark:text-zinc-400 hover:text-emerald-600 dark:hover:text-emerald-300 hover:bg-slate-200 dark:hover:bg-zinc-800'
             }`}
           >
             <Check className="w-3 h-3" /> Approve
@@ -123,12 +123,12 @@ export function StatusBadge({ status, canChangeStatus = false, onStatusChange }:
       {/* Changes Request Note Modal */}
       {modalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4">
-          <div className="w-full max-w-md bg-zinc-900 border border-zinc-800 rounded-2xl p-6 shadow-2xl space-y-4 animate-in fade-in zoom-in-95">
-            <h3 className="text-base font-semibold text-zinc-100 flex items-center gap-2">
-              <AlertCircle className="w-5 h-5 text-amber-400" />
+          <div className="w-full max-w-md bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-800 rounded-2xl p-6 shadow-2xl space-y-4 animate-in fade-in zoom-in-95">
+            <h3 className="text-base font-semibold text-slate-900 dark:text-zinc-100 flex items-center gap-2">
+              <AlertCircle className="w-5 h-5 text-amber-500 dark:text-amber-400" />
               Request Changes
             </h3>
-            <p className="text-xs text-zinc-400">
+            <p className="text-xs text-slate-500 dark:text-zinc-400">
               Summarize required changes for the editor or leave specific comments on the video timeline.
             </p>
             <textarea
@@ -136,12 +136,12 @@ export function StatusBadge({ status, canChangeStatus = false, onStatusChange }:
               value={notes}
               onChange={(e) => setNotes(e.target.value)}
               placeholder="e.g. Please update audio mix and reposition lower thirds..."
-              className="w-full bg-zinc-950 border border-zinc-800 rounded-xl p-3 text-sm text-zinc-200 placeholder-zinc-500 focus:outline-none focus:border-amber-500/50"
+              className="w-full bg-slate-50 dark:bg-zinc-950 border border-slate-200 dark:border-zinc-800 rounded-xl p-3 text-sm text-slate-800 dark:text-zinc-200 placeholder-slate-400 dark:placeholder-zinc-500 focus:outline-none focus:border-amber-500/50"
             />
             <div className="flex justify-end gap-2 pt-2">
               <button
                 onClick={() => setModalOpen(false)}
-                className="px-4 py-2 rounded-xl text-xs font-medium text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800 transition-colors"
+                className="px-4 py-2 rounded-xl text-xs font-medium text-slate-500 dark:text-zinc-400 hover:text-slate-800 dark:hover:text-zinc-200 hover:bg-slate-100 dark:hover:bg-zinc-800 transition-colors"
               >
                 Cancel
               </button>

@@ -156,7 +156,7 @@ export function CommentSidebar({
       <div className="p-3.5 border-b border-slate-200 dark:border-zinc-800/80 bg-slate-50/50 dark:bg-zinc-900/40 shrink-0">
         <div className="flex items-center justify-between gap-2">
           <div className="flex items-center gap-2">
-            <MessageSquare className="w-4 h-4 text-teal-600 dark:text-teal-400" />
+            <MessageSquare className="w-4 h-4 text-brand-600 dark:text-teal-400" />
             <h3 className="font-semibold text-sm text-slate-800 dark:text-zinc-200">Comments</h3>
             <span className="px-2 py-0.5 rounded-full bg-slate-200 dark:bg-zinc-800 text-[11px] font-mono text-slate-600 dark:text-zinc-400">
               {topLevelComments.length}
@@ -170,7 +170,7 @@ export function CommentSidebar({
                 onClick={() => handleFilterChange(tab)}
                 className={`px-2.5 py-0.5 rounded-md font-medium capitalize transition-all ${
                   filter === tab
-                    ? 'bg-teal-600 text-white shadow-sm'
+                    ? 'bg-brand-600 dark:bg-teal-600 text-white shadow-sm'
                     : 'text-slate-500 dark:text-zinc-400 hover:text-slate-900 dark:hover:text-zinc-200'
                 }`}
               >
@@ -188,7 +188,7 @@ export function CommentSidebar({
             <MessageSquare className="w-7 h-7 mb-2 stroke-1" />
             <p className="text-xs font-medium">No comments found in this view.</p>
             <p className="text-[10px] text-slate-500 dark:text-zinc-500 mt-1">
-              Select <span className="text-teal-500 font-semibold">Pin</span> or{' '}
+              Select <span className="text-brand-500 dark:text-teal-500 font-semibold">Pin</span> or{' '}
               <span className="text-cyan-500 font-semibold">Draw</span> tool on video to add precise feedback.
             </p>
           </div>
@@ -209,7 +209,7 @@ export function CommentSidebar({
                 ref={isActive ? activeCardRef : null}
                 className={`p-2.5 rounded-xl border transition-all ${
                   isActive
-                    ? 'bg-teal-50/70 dark:bg-teal-950/20 border-teal-500 ring-2 ring-teal-500/20 shadow-md'
+                    ? 'bg-brand-50/70 dark:bg-teal-950/20 border-brand-500 ring-2 ring-brand-500/20 dark:border-teal-500 dark:ring-teal-500/20 shadow-md'
                     : 'bg-white dark:bg-zinc-900/50 border-slate-200 dark:border-zinc-800/80 hover:border-slate-300 dark:hover:border-zinc-700'
                 }`}
               >
@@ -219,10 +219,10 @@ export function CommentSidebar({
                     {/* Timestamp Jump Button — shows range if available */}
                     <button
                       onClick={() => onSeekTo(comment.timestamp, comment._id)}
-                      className="px-1.5 py-0.5 rounded-md bg-teal-500/10 dark:bg-teal-600/20 hover:bg-teal-500/20 text-teal-700 dark:text-teal-300 font-mono text-[10px] font-semibold border border-teal-500/30 flex items-center gap-1 transition-colors shrink-0"
+                      className="px-1.5 py-0.5 rounded-md bg-brand-500/10 dark:bg-teal-600/20 hover:bg-brand-500/20 dark:hover:bg-teal-500/20 text-brand-700 dark:text-teal-300 font-mono text-[10px] font-semibold border border-brand-500/30 dark:border-teal-500/30 flex items-center gap-1 transition-colors shrink-0"
                       title="Jump to video timestamp"
                     >
-                      <Clock className="w-2.5 h-2.5 text-teal-600 dark:text-teal-400" />
+                      <Clock className="w-2.5 h-2.5 text-brand-600 dark:text-teal-400" />
                       {comment.timestampEnd
                         ? `${formatTimecode(comment.timestamp)} → ${formatTimecode(comment.timestampEnd)}`
                         : formatTimecode(comment.timestamp)}
@@ -237,7 +237,7 @@ export function CommentSidebar({
                         <span>Drawing</span>
                       </span>
                     ) : comment.x !== undefined && comment.y !== undefined ? (
-                      <span className="px-1.5 py-0.2 rounded bg-teal-500/10 dark:bg-teal-500/20 text-teal-600 dark:text-teal-400 text-[9px] font-mono flex items-center gap-0.5 border border-teal-500/30 shrink-0">
+                      <span className="px-1.5 py-0.2 rounded bg-brand-500/10 dark:bg-teal-500/20 text-brand-600 dark:text-teal-400 text-[9px] font-mono flex items-center gap-0.5 border border-brand-500/30 dark:border-teal-500/30 shrink-0">
                         <MapPin className="w-2 h-2" />
                         <span>Pin ({Math.round(comment.x)}%, {Math.round(comment.y)}%)</span>
                       </span>
@@ -301,7 +301,7 @@ export function CommentSidebar({
                       rows={2}
                       value={editText}
                       onChange={(e) => setEditText(e.target.value)}
-                      className="w-full bg-slate-50 dark:bg-zinc-900 border border-slate-300 dark:border-zinc-700 rounded-xl p-2 text-xs text-slate-900 dark:text-zinc-100 focus:outline-none focus:border-teal-500"
+                      className="w-full bg-slate-50 dark:bg-zinc-900 border border-slate-300 dark:border-zinc-700 rounded-xl p-2 text-xs text-slate-900 dark:text-zinc-100 focus:outline-none focus:border-brand-500 dark:focus:border-teal-500"
                     />
                     <div className="flex justify-end gap-2">
                       <button
@@ -312,7 +312,7 @@ export function CommentSidebar({
                       </button>
                       <button
                         onClick={() => handleSaveEdit(comment._id)}
-                        className="px-2.5 py-1 text-[11px] bg-teal-600 hover:bg-teal-500 text-white rounded-lg"
+                        className="px-2.5 py-1 text-[11px] bg-brand-600 hover:bg-brand-500 dark:bg-teal-600 dark:hover:bg-teal-500 text-white rounded-lg"
                       >
                         Save
                       </button>
@@ -334,7 +334,7 @@ export function CommentSidebar({
                 <div className="mt-2 flex items-center gap-3 text-[11px]">
                   <button
                     onClick={() => setReplyingToId(replyingToId === comment._id ? null : comment._id)}
-                    className="text-slate-500 dark:text-zinc-400 hover:text-teal-600 dark:hover:text-teal-400 flex items-center gap-1 font-medium transition-colors"
+                    className="text-slate-500 dark:text-zinc-400 hover:text-brand-600 dark:hover:text-teal-400 flex items-center gap-1 font-medium transition-colors"
                   >
                     <CornerDownRight className="w-3 h-3" /> Reply {replies.length > 0 && `(${replies.length})`}
                   </button>
@@ -365,7 +365,7 @@ export function CommentSidebar({
 
                 {/* Inline Reply Input */}
                 {replyingToId === comment._id && (
-                  <div className="mt-2.5 pl-3 border-l border-teal-500/40 space-y-2">
+                  <div className="mt-2.5 pl-3 border-l border-brand-500/40 dark:border-teal-500/40 space-y-2">
                     <MentionTextarea
                       value={replyText}
                       onChange={setReplyText}
@@ -373,7 +373,7 @@ export function CommentSidebar({
                       placeholder="Reply... type @ to mention someone"
                       rows={2}
                       members={members}
-                      className="w-full bg-slate-50 dark:bg-zinc-900 border border-slate-300 dark:border-zinc-700/80 rounded-xl px-3 py-1.5 text-xs text-slate-900 dark:text-zinc-100 placeholder-slate-400 dark:placeholder-zinc-500 focus:outline-none focus:border-teal-500"
+                      className="w-full bg-slate-50 dark:bg-zinc-900 border border-slate-300 dark:border-zinc-700/80 rounded-xl px-3 py-1.5 text-xs text-slate-900 dark:text-zinc-100 placeholder-slate-400 dark:placeholder-zinc-500 focus:outline-none focus:border-brand-500 dark:focus:border-teal-500"
                     />
                     <div className="flex justify-end gap-2">
                       <button
@@ -385,7 +385,7 @@ export function CommentSidebar({
                       <button
                         onClick={() => handleSubmitReply(comment._id)}
                         disabled={isSubmitting || !replyText.trim()}
-                        className="px-3 py-1 text-[11px] bg-teal-600 hover:bg-teal-500 text-white rounded-lg disabled:opacity-50 flex items-center gap-1"
+                        className="px-3 py-1 text-[11px] bg-brand-600 hover:bg-brand-500 dark:bg-teal-600 dark:hover:bg-teal-500 text-white rounded-lg disabled:opacity-50 flex items-center gap-1"
                       >
                         <Send className="w-3 h-3" />
                         <span>Send</span>

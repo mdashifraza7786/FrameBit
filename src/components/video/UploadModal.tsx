@@ -298,7 +298,7 @@ export function UploadModal({
         {/* Header */}
         <div className="flex items-center justify-between pb-3 border-b border-slate-100 dark:border-zinc-800">
           <div className="flex items-center gap-3">
-            <div className="p-2 rounded-2xl bg-teal-500/10 dark:bg-teal-600/20 text-teal-600 dark:text-teal-400 border border-teal-500/30">
+            <div className="p-2 rounded-2xl bg-brand-500/10 dark:bg-teal-600/20 text-brand-600 dark:text-teal-400 border border-brand-500/30 dark:border-teal-500/30">
               <Upload className="w-5 h-5" />
             </div>
             <div>
@@ -332,8 +332,8 @@ export function UploadModal({
             onClick={() => fileInputRef.current?.click()}
             className={`border-2 border-dashed rounded-3xl p-8 text-center cursor-pointer transition-all flex flex-col items-center justify-center space-y-3 ${
               isDragOver
-                ? 'border-teal-500 bg-teal-500/10'
-                : 'border-slate-300 dark:border-zinc-800 hover:border-teal-500/50 hover:bg-slate-50 dark:hover:bg-zinc-950/40'
+                ? 'border-brand-500 bg-brand-500/10 dark:border-teal-500 dark:bg-teal-500/10'
+                : 'border-slate-300 dark:border-zinc-800 hover:border-brand-500/50 dark:hover:border-teal-500/50 hover:bg-slate-50 dark:hover:bg-zinc-950/40'
             }`}
           >
             <input
@@ -343,7 +343,7 @@ export function UploadModal({
               className="hidden"
               onChange={(e) => e.target.files?.[0] && handleFileSelect(e.target.files[0])}
             />
-            <div className="w-12 h-12 rounded-2xl bg-teal-500/10 dark:bg-teal-600/15 border border-teal-500/30 flex items-center justify-center text-teal-600 dark:text-teal-400">
+            <div className="w-12 h-12 rounded-2xl bg-brand-500/10 dark:bg-teal-600/15 border border-brand-500/30 dark:border-teal-500/30 flex items-center justify-center text-brand-600 dark:text-teal-400">
               <Upload className="w-6 h-6" />
             </div>
             <div>
@@ -365,7 +365,7 @@ export function UploadModal({
                     className="w-16 h-10 object-cover rounded-lg border border-slate-300 dark:border-zinc-700 shrink-0 shadow-sm"
                   />
                 ) : (
-                  <div className="w-10 h-10 rounded-xl bg-teal-500/10 dark:bg-teal-600/20 text-teal-600 dark:text-teal-400 flex items-center justify-center shrink-0">
+                  <div className="w-10 h-10 rounded-xl bg-brand-500/10 dark:bg-teal-600/20 text-brand-600 dark:text-teal-400 flex items-center justify-center shrink-0">
                     <Film className="w-5 h-5" />
                   </div>
                 )}
@@ -401,7 +401,7 @@ export function UploadModal({
                   onChange={(e) => setAssetName(e.target.value)}
                   placeholder="e.g. Hero Cut - Color Graded"
                   disabled={uploadStatus !== 'idle'}
-                  className="w-full bg-slate-50 dark:bg-zinc-950 border border-slate-300 dark:border-zinc-800 rounded-xl p-2.5 text-xs text-slate-900 dark:text-zinc-100 placeholder-slate-400 dark:placeholder-zinc-500 focus:outline-none focus:border-teal-500 disabled:opacity-50"
+                  className="w-full bg-slate-50 dark:bg-zinc-950 border border-slate-300 dark:border-zinc-800 rounded-xl p-2.5 text-xs text-slate-900 dark:text-zinc-100 placeholder-slate-400 dark:placeholder-zinc-500 focus:outline-none focus:border-brand-500 dark:focus:border-teal-500 disabled:opacity-50"
                 />
               </div>
             )}
@@ -417,7 +417,7 @@ export function UploadModal({
                 onChange={(e) => setChangeNotes(e.target.value)}
                 placeholder="e.g. Adjusted audio mix and color timing on scenes 3-5"
                 disabled={uploadStatus !== 'idle'}
-                className="w-full bg-slate-50 dark:bg-zinc-950 border border-slate-300 dark:border-zinc-800 rounded-xl p-2.5 text-xs text-slate-900 dark:text-zinc-100 placeholder-slate-400 dark:placeholder-zinc-500 focus:outline-none focus:border-teal-500 resize-none disabled:opacity-50"
+                className="w-full bg-slate-50 dark:bg-zinc-950 border border-slate-300 dark:border-zinc-800 rounded-xl p-2.5 text-xs text-slate-900 dark:text-zinc-100 placeholder-slate-400 dark:placeholder-zinc-500 focus:outline-none focus:border-brand-500 dark:focus:border-teal-500 resize-none disabled:opacity-50"
               />
             </div>
 
@@ -440,12 +440,12 @@ export function UploadModal({
                       </span>
                     )}
                   </span>
-                  <span className="font-mono text-teal-600 dark:text-teal-400">{progress}%</span>
+                  <span className="font-mono text-brand-600 dark:text-teal-400">{progress}%</span>
                 </div>
 
                 <div className="w-full h-2 rounded-full bg-slate-200 dark:bg-zinc-800 overflow-hidden">
                   <div
-                    className="h-full bg-gradient-to-r from-teal-600 to-cyan-500 transition-all duration-150"
+                    className="h-full bg-gradient-to-r from-brand-600 to-brand-400 dark:from-teal-600 dark:to-cyan-500 transition-all duration-150"
                     style={{ width: `${progress}%` }}
                   />
                 </div>
@@ -478,7 +478,7 @@ export function UploadModal({
                   <button
                     type="button"
                     onClick={startUpload}
-                    className="px-5 py-2 rounded-xl text-xs font-semibold bg-teal-600 hover:bg-teal-500 text-white shadow-lg shadow-teal-600/25 transition-all flex items-center gap-1.5"
+                    className="px-5 py-2 rounded-xl text-xs font-semibold bg-brand-600 hover:bg-brand-500 dark:bg-teal-600 dark:hover:bg-teal-500 text-white shadow-lg shadow-brand-600/25 dark:shadow-teal-600/25 transition-all flex items-center gap-1.5"
                   >
                     <Sparkles className="w-3.5 h-3.5" /> Start Upload
                   </button>

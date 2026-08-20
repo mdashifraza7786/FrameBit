@@ -30,8 +30,8 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-slate-50 dark:bg-[#090a0f] flex items-center justify-center transition-colors">
-        <div className="w-10 h-10 border-2 border-teal-500/30 border-t-teal-500 rounded-full animate-spin" />
+      <div className="min-h-screen bg-[var(--background)] dark:bg-[#090a0f] flex items-center justify-center transition-colors">
+        <div className="w-10 h-10 border-2 border-brand-500/30 border-t-brand-500 dark:border-teal-500/30 dark:border-t-teal-500 rounded-full animate-spin" />
       </div>
     );
   }
@@ -48,7 +48,7 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
   ];
 
   return (
-    <div className="h-screen flex overflow-hidden bg-slate-50 dark:bg-[#090a0f] text-slate-900 dark:text-zinc-100 selection:bg-teal-500/30 selection:text-teal-600 dark:selection:text-teal-300 transition-colors duration-200">
+    <div className="h-screen flex overflow-hidden bg-[var(--background)] dark:bg-[#090a0f] text-slate-900 dark:text-zinc-100 selection:bg-brand-500/30 selection:text-brand-700 dark:selection:bg-teal-500/30 dark:selection:text-teal-300 transition-colors duration-200">
       {/* Search Modal */}
       <GlobalSearchModal isOpen={searchOpen} onClose={() => setSearchOpen(false)} />
 
@@ -62,12 +62,12 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
           {/* Brand Logo + Collapse Toggle */}
           <div className={`h-16 flex items-center border-b border-slate-200 dark:border-zinc-800/60 shrink-0 ${sidebarCollapsed ? 'justify-center px-0' : 'gap-3 px-4 justify-between'}`}>
             <div className={`flex items-center gap-3 ${sidebarCollapsed ? 'justify-center' : ''}`}>
-              <div className="w-8 h-8 rounded-xl bg-gradient-to-br from-teal-500 to-cyan-700 flex items-center justify-center shadow-lg shadow-teal-500/20 shrink-0">
+              <div className="w-8 h-8 rounded-xl bg-gradient-to-br from-brand-600 to-brand-800 dark:from-teal-500 dark:to-cyan-700 flex items-center justify-center shadow-lg shadow-brand-600/20 dark:shadow-teal-500/20 shrink-0">
                 <Sparkles className="w-4 h-4 text-white" />
               </div>
               {!sidebarCollapsed && (
-                <span className="font-bold tracking-tight text-lg bg-gradient-to-r from-slate-900 via-slate-700 to-teal-700 dark:from-white dark:via-zinc-200 dark:to-teal-300 bg-clip-text text-transparent whitespace-nowrap overflow-hidden">
-                  Frame<span className="text-teal-600 dark:text-teal-400">Bit</span>
+                <span className="font-bold tracking-tight text-lg bg-gradient-to-r from-slate-900 via-slate-700 to-brand-700 dark:from-white dark:via-zinc-200 dark:to-teal-300 bg-clip-text text-transparent whitespace-nowrap overflow-hidden">
+                  Frame<span className="text-brand-600 dark:text-teal-400">Bit</span>
                 </span>
               )}
             </div>
@@ -88,7 +88,7 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
               <button
                 onClick={() => setSidebarCollapsed(false)}
                 title="Expand sidebar"
-                className="p-1.5 rounded-lg text-slate-400 hover:text-teal-600 dark:text-zinc-500 dark:hover:text-teal-400 hover:bg-slate-100 dark:hover:bg-zinc-800/60 transition-colors"
+                className="p-1.5 rounded-lg text-slate-400 hover:text-brand-600 dark:text-zinc-500 dark:hover:text-teal-400 hover:bg-slate-100 dark:hover:bg-zinc-800/60 transition-colors"
               >
                 <PanelLeftOpen className="w-4 h-4" />
               </button>
@@ -111,11 +111,11 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
                       : 'gap-3 px-3.5 py-2.5 w-full'
                   } ${
                     isActive
-                      ? 'bg-teal-500/10 dark:bg-teal-600/15 text-teal-700 dark:text-teal-400 border border-teal-500/20 shadow-sm'
+                      ? 'bg-brand-500/10 dark:bg-teal-600/15 text-brand-700 dark:text-teal-400 border border-brand-500/20 dark:border-teal-500/20 shadow-sm'
                       : 'text-slate-600 dark:text-zinc-400 hover:text-slate-900 dark:hover:text-zinc-200 hover:bg-slate-100 dark:hover:bg-zinc-800/40'
                   }`}
                 >
-                  <Icon className={`w-4 h-4 shrink-0 ${isActive ? 'text-teal-600 dark:text-teal-400' : 'text-slate-400 dark:text-zinc-500'}`} />
+                  <Icon className={`w-4 h-4 shrink-0 ${isActive ? 'text-brand-600 dark:text-teal-400' : 'text-slate-400 dark:text-zinc-500'}`} />
                   {!sidebarCollapsed && item.label}
                 </Link>
               );
@@ -164,20 +164,20 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
           {sidebarCollapsed ? (
             <div
               title={`${user?.name} (${user?.role})`}
-              className="w-9 h-9 rounded-full bg-teal-600/15 dark:bg-teal-600/30 border border-teal-500/40 flex items-center justify-center font-bold text-teal-700 dark:text-teal-300 text-xs cursor-default"
+              className="w-9 h-9 rounded-full bg-brand-600/15 dark:bg-teal-600/30 border border-brand-500/40 dark:border-teal-500/40 flex items-center justify-center font-bold text-brand-700 dark:text-teal-300 text-xs cursor-default"
             >
               {user?.name?.charAt(0).toUpperCase() || 'U'}
             </div>
           ) : (
             <div className="flex items-center justify-between pt-1">
               <div className="flex items-center gap-2.5 min-w-0">
-                <div className="w-8 h-8 rounded-full bg-teal-600/15 dark:bg-teal-600/30 border border-teal-500/40 flex items-center justify-center font-bold text-teal-700 dark:text-teal-300 text-xs">
+                <div className="w-8 h-8 rounded-full bg-brand-600/15 dark:bg-teal-600/30 border border-brand-500/40 dark:border-teal-500/40 flex items-center justify-center font-bold text-brand-700 dark:text-teal-300 text-xs">
                   {user?.name?.charAt(0).toUpperCase() || 'U'}
                 </div>
                 <div className="min-w-0">
                   <div className="text-xs font-semibold text-slate-800 dark:text-zinc-200 truncate">{user?.name}</div>
                   <div className="text-[10px] text-slate-500 dark:text-zinc-500 uppercase tracking-wider flex items-center gap-1">
-                    <ShieldCheck className="w-3 h-3 text-teal-600 dark:text-teal-400 inline" /> {user?.role}
+                    <ShieldCheck className="w-3 h-3 text-brand-600 dark:text-teal-400 inline" /> {user?.role}
                   </div>
                 </div>
               </div>
@@ -232,7 +232,7 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
         </header>
 
         {/* Page Content */}
-        <main className="flex-1 overflow-y-auto bg-slate-50 dark:bg-[#090a0f] p-6 lg:p-8">{children}</main>
+        <main className="flex-1 overflow-y-auto bg-[var(--background)] dark:bg-[#090a0f] p-6 lg:p-8">{children}</main>
       </div>
     </div>
   );

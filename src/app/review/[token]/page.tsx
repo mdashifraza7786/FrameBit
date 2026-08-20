@@ -166,15 +166,15 @@ export default function GuestReviewPage({
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-slate-50 dark:bg-[#090a0f] flex items-center justify-center">
-        <div className="w-10 h-10 border-2 border-teal-500/30 border-t-teal-500 rounded-full animate-spin" />
+      <div className="min-h-screen bg-[var(--background)] dark:bg-[#090a0f] flex items-center justify-center">
+        <div className="w-10 h-10 border-2 border-brand-500/30 border-t-brand-500 dark:border-teal-500/30 dark:border-t-teal-500 rounded-full animate-spin" />
       </div>
     );
   }
 
   if (error || !asset) {
     return (
-      <div className="min-h-screen bg-slate-50 dark:bg-[#090a0f] flex items-center justify-center p-4">
+      <div className="min-h-screen bg-[var(--background)] dark:bg-[#090a0f] flex items-center justify-center p-4">
         <div className="w-full max-w-md bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-800 rounded-3xl p-8 text-center space-y-4 shadow-2xl">
           <Lock className="w-12 h-12 text-rose-500 mx-auto" />
           <h2 className="text-lg font-bold text-slate-800 dark:text-zinc-100">Review Link Unavailable</h2>
@@ -188,16 +188,16 @@ export default function GuestReviewPage({
   const displayTitle = currentVersionNumber >= 2 ? `${asset.name} - v${currentVersionNumber}` : asset.name;
 
   return (
-    <div className="min-h-screen bg-slate-50 dark:bg-[#090a0f] text-slate-900 dark:text-zinc-100 flex flex-col selection:bg-teal-500/30 selection:text-teal-600 dark:selection:text-teal-300 transition-colors">
+    <div className="min-h-screen bg-[var(--background)] dark:bg-[#090a0f] text-slate-900 dark:text-zinc-100 flex flex-col selection:bg-brand-500/30 selection:text-brand-700 dark:selection:bg-teal-500/30 dark:selection:text-teal-300 transition-colors">
       {/* Guest Review Header */}
       <header className="h-16 border-b border-slate-200 dark:border-zinc-800/80 bg-white/80 dark:bg-zinc-950/60 backdrop-blur-md px-6 flex items-center justify-between shrink-0">
         <div className="flex items-center gap-3">
-          <div className="w-8 h-8 rounded-xl bg-gradient-to-br from-teal-500 to-cyan-700 flex items-center justify-center shadow-lg shadow-teal-500/20">
+          <div className="w-8 h-8 rounded-xl bg-gradient-to-br from-brand-600 to-brand-800 dark:from-teal-500 dark:to-cyan-700 flex items-center justify-center shadow-lg shadow-brand-600/20 dark:shadow-teal-500/20">
             <Sparkles className="w-4 h-4 text-white" />
           </div>
           <div>
             <span className="font-bold tracking-tight text-sm text-slate-800 dark:text-zinc-200">
-              FrameBit<span className="text-teal-600 dark:text-teal-400">.Review</span>
+              FrameBit<span className="text-brand-600 dark:text-teal-400">.Review</span>
             </span>
             <span className="text-[10px] text-slate-400 dark:text-zinc-500 block">Secure Client Portal</span>
           </div>
@@ -217,7 +217,7 @@ export default function GuestReviewPage({
       <main className="flex-1 p-6 lg:p-8 max-w-[1600px] w-full mx-auto space-y-5">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-slate-200 dark:border-zinc-800/80">
           <div className="space-y-1 min-w-0">
-            <div className="text-xs text-teal-600 dark:text-teal-400 font-semibold">{project?.name}</div>
+            <div className="text-xs text-brand-600 dark:text-teal-400 font-semibold">{project?.name}</div>
             <div className="flex items-center gap-3">
               <h1 className="text-xl sm:text-2xl font-bold text-slate-900 dark:text-white truncate">{displayTitle}</h1>
               <VersionSelector
