@@ -6,17 +6,25 @@ import {
   CornerDownRight,
   CheckCircle2,
   Check,
-  RotateCcw,
   Trash2,
   Edit2,
   Clock,
   MapPin,
   Pencil,
   Send,
+  ChevronDown,
+  Search,
+  X,
+  Square,
+  Circle as CircleIcon,
+  ArrowUpRight,
 } from 'lucide-react';
 import { CommentData, UserProfile } from '@/lib/types';
 import { formatTimecode } from '@/lib/timecode';
 import { MentionTextarea, MentionMember, renderWithMentions } from '@/components/common/MentionTextarea';
+import type { ActiveTool } from './VideoPlayer';
+
+const QUICK_DRAW_COLORS = ['#06b6d4', '#10b981', '#f59e0b', '#f43f5e', '#a855f7'];
 
 interface CommentSidebarProps {
   comments: CommentData[];
@@ -34,7 +42,8 @@ interface CommentSidebarProps {
     authorName?: string,
     x?: number,
     y?: number,
-    drawingData?: string
+    drawingData?: string,
+    timestampEnd?: number
   ) => Promise<void>;
   onResolveComment: (commentId: string, resolved: boolean) => Promise<void>;
   onDeleteComment: (commentId: string) => Promise<void>;
@@ -43,6 +52,20 @@ interface CommentSidebarProps {
   draftPin?: { x: number; y: number; timestamp: number; drawingData?: string } | null;
   onClearDraftPin?: () => void;
   projectId?: string;
+  /** Full-bleed cinema layout: fills parent height, no card border/rounding. */
+  theaterMode?: boolean;
+  /** Controlled annotation tool, shared with the video player's own toolbar. */
+  activeTool?: ActiveTool;
+  onActiveToolChange?: (tool: ActiveTool) => void;
+  drawColor?: string;
+  onDrawColorChange?: (color: string) => void;
+  /** Called the moment the user focuses the quick comment box — pauses playback so the timestamp freezes. */
+  onRequestPause?: () => void;
+  /** Anchors the start of a possible time-range comment — set as soon as composing begins, pin/drawing or not. */
+  rangeStart?: number | null;
+  /** The range end, dragged independently on the video's own mini-track (not tied to the playhead). */
+  rangeEnd?: number | null;
+  onClearRangeStart?: () => void;
 }
 
 export function CommentSidebar({
@@ -59,7 +82,18 @@ export function CommentSidebar({
   onDeleteComment,
   onEditComment,
   allowGuestComments = false,
+  draftPin,
+  onClearDraftPin,
   projectId,
+  theaterMode = false,
+  activeTool,
+  onActiveToolChange,
+  drawColor,
+  onDrawColorChange,
+  onRequestPause,
+  rangeStart = null,
+  rangeEnd = null,
+  onClearRangeStart,
 }: CommentSidebarProps) {
   const [internalFilter, setInternalFilter] = useState<'all' | 'active' | 'resolved'>('all');
   const filter = externalFilter || internalFilter;
@@ -75,7 +109,16 @@ export function CommentSidebar({
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [members, setMembers] = useState<MentionMember[]>([]);
 
+  const [filterMenuOpen, setFilterMenuOpen] = useState(false);
+  const [searchOpen, setSearchOpen] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [quickText, setQuickText] = useState('');
+  const [isQuickSubmitting, setIsQuickSubmitting] = useState(false);
+  const [showQuickTools, setShowQuickTools] = useState(false);
+
   const activeCardRef = useRef<HTMLDivElement>(null);
+  const quickInputRef = useRef<HTMLInputElement>(null);
+  const searchInputRef = useRef<HTMLInputElement>(null);
 
   // Fetch project members for @mentions
   useEffect(() => {
@@ -113,6 +156,49 @@ export function CommentSidebar({
     }
   }, [activeCommentId]);
 
+  // Focus the search box the moment it's revealed
+  useEffect(() => {
+    if (searchOpen) searchInputRef.current?.focus();
+  }, [searchOpen]);
+
+  // A pin/drawing was just placed on the video — hand off straight to the composer instead of an on-video popup
+  useEffect(() => {
+    if (draftPin) quickInputRef.current?.focus();
+  }, [draftPin]);
+
+  // Live range end — dragged independently on the video's own range mini-track (not the playhead/scrub bar),
+  // mirrored down here purely for display + submit. No separate "range mode" toggle needed.
+  const liveRangeEnd = rangeStart !== null ? rangeEnd : null;
+  // A meaningful gap is required to actually attach a range on submit (the server also rejects timestampEnd <= timestamp).
+  const hasValidRange = rangeStart !== null && liveRangeEnd !== null && Math.abs(liveRangeEnd - rangeStart) > 0.15;
+
+  const handleQuickComment = async () => {
+    if (!quickText.trim() || isQuickSubmitting) return;
+    setIsQuickSubmitting(true);
+    try {
+      const anchor = rangeStart ?? (draftPin ? draftPin.timestamp : currentTimestamp);
+      if (hasValidRange && liveRangeEnd !== null) {
+        const start = Math.min(anchor, liveRangeEnd);
+        const end = Math.max(anchor, liveRangeEnd);
+        await onAddComment(quickText.trim(), start, undefined, undefined, draftPin?.x, draftPin?.y, draftPin?.drawingData, end);
+      } else {
+        await onAddComment(quickText.trim(), anchor, undefined, undefined, draftPin?.x, draftPin?.y, draftPin?.drawingData);
+      }
+      if (draftPin) onClearDraftPin?.();
+      onClearRangeStart?.();
+      setQuickText('');
+    } finally {
+      setIsQuickSubmitting(false);
+    }
+  };
+
+  // Pause playback every time the composer is (re)focused so the attached timestamp freezes at that instant
+  const handleQuickComposerFocus = () => {
+    // Only anchor on the *first* focus of a composing session — re-focusing later (e.g. after dragging the
+    // range end, which also moves the live playhead for its preview) must not stomp the already-set start.
+    if (!draftPin && rangeStart === null) onRequestPause?.();
+  };
+
   const handleSubmitReply = async (parentCommentId: string) => {
     if (!replyText.trim() || isSubmitting) return;
 
@@ -145,57 +231,163 @@ export function CommentSidebar({
   const topLevelComments = comments.filter((c) => !c.parentCommentId);
 
   const filteredComments = topLevelComments.filter((c) => {
-    if (filter === 'active') return !c.resolved;
-    if (filter === 'resolved') return c.resolved;
+    if (filter === 'active' && c.resolved) return false;
+    if (filter === 'resolved' && !c.resolved) return false;
+    if (searchQuery.trim()) {
+      const q = searchQuery.trim().toLowerCase();
+      const author = (c.userId?.name || c.guestName || '').toLowerCase();
+      if (!c.text.toLowerCase().includes(q) && !author.includes(q)) return false;
+    }
     return true;
   });
 
+  const filterLabel = filter === 'all' ? 'All comments' : filter === 'active' ? 'Unresolved' : 'Resolved';
+
   return (
-    <div className="flex flex-col h-full max-h-full min-h-0 bg-white dark:bg-zinc-950 border border-slate-200 dark:border-zinc-800 rounded-2xl overflow-hidden shadow-xl">
+    <div
+      className={
+        theaterMode
+          ? 'flex flex-col h-full max-h-full min-h-0 bg-zinc-950'
+          : 'flex flex-col h-full max-h-full min-h-0 bg-white dark:bg-zinc-950 border border-slate-200 dark:border-zinc-800 rounded-2xl overflow-hidden shadow-xl'
+      }
+    >
       {/* Header & Filter Tabs */}
-      <div className="p-3.5 border-b border-slate-200 dark:border-zinc-800/80 bg-slate-50/50 dark:bg-zinc-900/40 shrink-0">
-        <div className="flex items-center justify-between gap-2">
-          <div className="flex items-center gap-2">
-            <MessageSquare className="w-4 h-4 text-brand-600 dark:text-teal-400" />
-            <h3 className="font-semibold text-sm text-slate-800 dark:text-zinc-200">Comments</h3>
-            <span className="px-2 py-0.5 rounded-full bg-slate-200 dark:bg-zinc-800 text-[11px] font-mono text-slate-600 dark:text-zinc-400">
-              {topLevelComments.length}
-            </span>
+      {theaterMode ? (
+        <div className="border-b border-zinc-800/80 shrink-0">
+          <div className="flex items-center justify-between gap-2 px-3 py-2.5">
+            {/* "All comments ⌄" filter dropdown */}
+            <div className="relative">
+              <button
+                onClick={() => setFilterMenuOpen((v) => !v)}
+                className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg hover:bg-zinc-900 text-sm font-semibold text-zinc-200 transition-colors"
+              >
+                <span>{filterLabel}</span>
+                <ChevronDown className={`w-3.5 h-3.5 text-zinc-500 transition-transform ${filterMenuOpen ? 'rotate-180' : ''}`} />
+              </button>
+
+              {filterMenuOpen && (
+                <>
+                  <div className="fixed inset-0 z-30" onClick={() => setFilterMenuOpen(false)} />
+                  <div className="absolute left-0 mt-1 w-40 rounded-xl bg-zinc-900 border border-zinc-800 shadow-2xl z-40 overflow-hidden py-1">
+                    {(['all', 'active', 'resolved'] as const).map((tab) => (
+                      <button
+                        key={tab}
+                        onClick={() => {
+                          handleFilterChange(tab);
+                          setFilterMenuOpen(false);
+                        }}
+                        className={`w-full text-left px-3 py-1.5 text-xs font-medium transition-colors flex items-center justify-between ${
+                          filter === tab ? 'text-teal-400' : 'text-zinc-300 hover:bg-zinc-800'
+                        }`}
+                      >
+                        <span>{tab === 'all' ? 'All comments' : tab === 'active' ? 'Unresolved' : 'Resolved'}</span>
+                        {filter === tab && <Check className="w-3 h-3" />}
+                      </button>
+                    ))}
+                  </div>
+                </>
+              )}
+            </div>
+
+            <div className="flex items-center gap-1 shrink-0">
+              <span className="px-1.5 text-[11px] font-mono text-zinc-500">{topLevelComments.length}</span>
+              <button
+                onClick={() => {
+                  setSearchOpen((v) => !v);
+                  if (searchOpen) setSearchQuery('');
+                }}
+                title="Search comments"
+                className={`p-1.5 rounded-lg transition-colors ${searchOpen ? 'bg-zinc-800 text-teal-400' : 'text-zinc-500 hover:text-zinc-200 hover:bg-zinc-900'}`}
+              >
+                <Search className="w-3.5 h-3.5" />
+              </button>
+            </div>
           </div>
 
-          <div className="flex items-center gap-1 bg-slate-200 dark:bg-zinc-900 p-0.5 rounded-lg border border-slate-300/50 dark:border-zinc-800 text-xs">
-            {(['all', 'active', 'resolved'] as const).map((tab) => (
-              <button
-                key={tab}
-                onClick={() => handleFilterChange(tab)}
-                className={`px-2.5 py-0.5 rounded-md font-medium capitalize transition-all ${
-                  filter === tab
-                    ? 'bg-brand-600 dark:bg-teal-600 text-white shadow-sm'
-                    : 'text-slate-500 dark:text-zinc-400 hover:text-slate-900 dark:hover:text-zinc-200'
-                }`}
-              >
-                {tab}
-              </button>
-            ))}
+          {searchOpen && (
+            <div className="px-3 pb-2.5 flex items-center gap-1.5 animate-in fade-in slide-in-from-top-1 duration-150">
+              <div className="flex-1 flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-zinc-900 border border-zinc-800 focus-within:border-teal-500/60">
+                <Search className="w-3 h-3 text-zinc-500 shrink-0" />
+                <input
+                  ref={searchInputRef}
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  placeholder="Search comments..."
+                  className="flex-1 min-w-0 bg-transparent text-base sm:text-xs text-zinc-200 placeholder-zinc-500 focus:outline-none"
+                />
+                {searchQuery && (
+                  <button onClick={() => setSearchQuery('')} className="text-zinc-500 hover:text-zinc-300 shrink-0">
+                    <X className="w-3 h-3" />
+                  </button>
+                )}
+              </div>
+            </div>
+          )}
+        </div>
+      ) : (
+        <div className="p-3.5 border-b border-slate-200 dark:border-zinc-800/80 bg-slate-50/50 dark:bg-zinc-900/40 shrink-0">
+          <div className="flex items-center justify-between gap-2">
+            <div className="flex items-center gap-2">
+              <MessageSquare className="w-4 h-4 text-brand-600 dark:text-teal-400" />
+              <h3 className="font-semibold text-sm text-slate-800 dark:text-zinc-200">Comments</h3>
+              <span className="px-2 py-0.5 rounded-full bg-slate-200 dark:bg-zinc-800 text-[11px] font-mono text-slate-600 dark:text-zinc-400">
+                {topLevelComments.length}
+              </span>
+            </div>
+
+            <div className="flex items-center gap-1 bg-slate-200 dark:bg-zinc-900 p-0.5 rounded-lg border border-slate-300/50 dark:border-zinc-800 text-xs">
+              {(['all', 'active', 'resolved'] as const).map((tab) => (
+                <button
+                  key={tab}
+                  onClick={() => handleFilterChange(tab)}
+                  className={`px-2.5 py-0.5 rounded-md font-medium capitalize transition-all ${
+                    filter === tab
+                      ? 'bg-brand-600 dark:bg-teal-600 text-white shadow-sm'
+                      : 'text-slate-500 dark:text-zinc-400 hover:text-slate-900 dark:hover:text-zinc-200'
+                  }`}
+                >
+                  {tab}
+                </button>
+              ))}
+            </div>
           </div>
         </div>
-      </div>
+      )}
 
       {/* Scrollable Comment Feed */}
       <div className="flex-1 min-h-0 overflow-y-auto p-2.5 space-y-2 custom-scrollbar">
         {filteredComments.length === 0 ? (
-          <div className="h-full min-h-[180px] flex flex-col items-center justify-center text-center p-4 text-slate-400 dark:text-zinc-600">
-            <MessageSquare className="w-7 h-7 mb-2 stroke-1" />
-            <p className="text-xs font-medium">No comments found in this view.</p>
-            <p className="text-[10px] text-slate-500 dark:text-zinc-500 mt-1">
-              Select <span className="text-brand-500 dark:text-teal-500 font-semibold">Pin</span> or{' '}
-              <span className="text-cyan-500 font-semibold">Draw</span> tool on video to add precise feedback.
-            </p>
-          </div>
+          theaterMode ? (
+            <div className="h-full min-h-[180px] flex flex-col items-center justify-center text-center p-4">
+              <div className="w-11 h-11 rounded-full bg-zinc-900 border border-zinc-800 flex items-center justify-center mb-3">
+                <MessageSquare className="w-5 h-5 text-zinc-600" />
+              </div>
+              <p className="text-sm font-semibold text-zinc-300">
+                {searchQuery ? 'No matching comments' : 'No comments — yet'}
+              </p>
+            </div>
+          ) : (
+            <div className="h-full min-h-[180px] flex flex-col items-center justify-center text-center p-4 text-slate-400 dark:text-zinc-600">
+              <MessageSquare className="w-7 h-7 mb-2 stroke-1" />
+              <p className="text-xs font-medium">No comments found in this view.</p>
+              <p className="text-[10px] text-slate-500 dark:text-zinc-500 mt-1">
+                Select <span className="text-brand-500 dark:text-teal-500 font-semibold">Pin</span> or{' '}
+                <span className="text-cyan-500 font-semibold">Draw</span> tool on video to add precise feedback.
+              </p>
+            </div>
+          )
         ) : (
           filteredComments.map((comment) => {
             const replies = comments.filter((c) => c.parentCommentId === comment._id);
-            const isActive = activeCommentId === comment._id;
+            const isToggledOn = activeCommentId === comment._id;
+            // In theater mode the highlight tracks the playhead the same way the on-video pin does — it
+            // only lights up right at the comment's own timestamp, not for as long as it stays toggled on.
+            const isActive =
+              isToggledOn &&
+              (!theaterMode ||
+                (comment.timestampEnd && comment.timestampEnd > comment.timestamp
+                  ? currentTimestamp >= comment.timestamp - 0.15 && currentTimestamp <= comment.timestampEnd + 0.15
+                  : Math.abs(currentTimestamp - comment.timestamp) <= 0.15));
             const authorName = comment.userId?.name || comment.guestName || 'Reviewer';
             const isAuthor =
               currentUser &&
@@ -206,8 +398,9 @@ export function CommentSidebar({
             return (
               <div
                 key={comment._id}
-                ref={isActive ? activeCardRef : null}
-                className={`p-2.5 rounded-xl border transition-all ${
+                ref={isToggledOn ? activeCardRef : null}
+                onClick={() => onSeekTo(comment.timestamp, comment._id)}
+                className={`p-2.5 rounded-xl border transition-all cursor-pointer ${
                   isActive
                     ? 'bg-brand-50/70 dark:bg-teal-950/20 border-brand-500 ring-2 ring-brand-500/20 dark:border-teal-500 dark:ring-teal-500/20 shadow-md'
                     : 'bg-white dark:bg-zinc-900/50 border-slate-200 dark:border-zinc-800/80 hover:border-slate-300 dark:hover:border-zinc-700'
@@ -218,7 +411,10 @@ export function CommentSidebar({
                   <div className="flex items-center gap-1.5 min-w-0 flex-wrap">
                     {/* Timestamp Jump Button — shows range if available */}
                     <button
-                      onClick={() => onSeekTo(comment.timestamp, comment._id)}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onSeekTo(comment.timestamp, comment._id);
+                      }}
                       className="px-1.5 py-0.5 rounded-md bg-brand-500/10 dark:bg-teal-600/20 hover:bg-brand-500/20 dark:hover:bg-teal-500/20 text-brand-700 dark:text-teal-300 font-mono text-[10px] font-semibold border border-brand-500/30 dark:border-teal-500/30 flex items-center gap-1 transition-colors shrink-0"
                       title="Jump to video timestamp"
                     >
@@ -248,7 +444,10 @@ export function CommentSidebar({
                   <div className="flex items-center gap-1 shrink-0">
                     {/* Resolve / Reopen Button */}
                     <button
-                      onClick={() => onResolveComment(comment._id, !comment.resolved)}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onResolveComment(comment._id, !comment.resolved);
+                      }}
                       className={`flex items-center gap-1 px-1.5 py-0.5 rounded-lg text-[9px] font-medium border transition-all ${
                         comment.resolved
                           ? 'border-emerald-500/40 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 hover:bg-rose-500/10 hover:border-rose-500/30 hover:text-rose-500'
@@ -273,7 +472,8 @@ export function CommentSidebar({
                     {isAuthor && (
                       <div className="flex items-center gap-0.5 text-slate-400 dark:text-zinc-500">
                         <button
-                          onClick={() => {
+                          onClick={(e) => {
+                            e.stopPropagation();
                             setEditingId(comment._id);
                             setEditText(comment.text);
                           }}
@@ -283,7 +483,10 @@ export function CommentSidebar({
                           <Edit2 className="w-2.5 h-2.5" />
                         </button>
                         <button
-                          onClick={() => onDeleteComment(comment._id)}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            onDeleteComment(comment._id);
+                          }}
                           className="p-0.5 hover:text-rose-600 dark:hover:text-rose-400 transition-colors rounded"
                           title="Delete"
                         >
@@ -296,7 +499,7 @@ export function CommentSidebar({
 
                 {/* Comment Content */}
                 {editingId === comment._id ? (
-                  <div className="space-y-2 my-2">
+                  <div className="space-y-2 my-2" onClick={(e) => e.stopPropagation()}>
                     <textarea
                       rows={2}
                       value={editText}
@@ -331,7 +534,7 @@ export function CommentSidebar({
                 )}
 
                 {/* Reply trigger button */}
-                <div className="mt-2 flex items-center gap-3 text-[11px]">
+                <div className="mt-2 flex items-center gap-3 text-[11px]" onClick={(e) => e.stopPropagation()}>
                   <button
                     onClick={() => setReplyingToId(replyingToId === comment._id ? null : comment._id)}
                     className="text-slate-500 dark:text-zinc-400 hover:text-brand-600 dark:hover:text-teal-400 flex items-center gap-1 font-medium transition-colors"
@@ -365,7 +568,10 @@ export function CommentSidebar({
 
                 {/* Inline Reply Input */}
                 {replyingToId === comment._id && (
-                  <div className="mt-2.5 pl-3 border-l border-brand-500/40 dark:border-teal-500/40 space-y-2">
+                  <div
+                    className="mt-2.5 pl-3 border-l border-brand-500/40 dark:border-teal-500/40 space-y-2"
+                    onClick={(e) => e.stopPropagation()}
+                  >
                     <MentionTextarea
                       value={replyText}
                       onChange={setReplyText}
@@ -398,6 +604,144 @@ export function CommentSidebar({
           })
         )}
       </div>
+
+      {/* Quick Comment Composer, pinned to current playhead time */}
+      {theaterMode && (
+        <div className="shrink-0 border-t border-zinc-800/80 p-2.5 space-y-2">
+          {/* Inline annotation tool row — revealed by the pen icon, shared state with the video's own toolbar */}
+          {showQuickTools && !draftPin && (
+            <div className="flex items-center justify-between gap-2 px-1 animate-in fade-in slide-in-from-bottom-1 duration-150">
+              <div className="flex items-center bg-zinc-900 p-1 rounded-xl border border-zinc-800 gap-0.5">
+                {(
+                  [
+                    ['pin', MapPin, 'Pin'],
+                    ['draw', Pencil, 'Pen'],
+                    ['rectangle', Square, 'Rect'],
+                    ['circle', CircleIcon, 'Circle'],
+                    ['arrow', ArrowUpRight, 'Arrow'],
+                  ] as const
+                ).map(([tool, Icon, label]) => (
+                  <button
+                    key={tool}
+                    type="button"
+                    title={label}
+                    onClick={() => onActiveToolChange?.(activeTool === tool ? null : tool)}
+                    className={`p-1.5 rounded-lg transition-all ${
+                      activeTool === tool
+                        ? 'bg-teal-600 text-white shadow-md shadow-teal-600/30'
+                        : 'text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800'
+                    }`}
+                  >
+                    <Icon className="w-3.5 h-3.5" />
+                  </button>
+                ))}
+              </div>
+
+              <div className="flex items-center gap-1 bg-zinc-900 p-1.5 rounded-xl border border-zinc-800">
+                {QUICK_DRAW_COLORS.map((hex) => (
+                  <button
+                    key={hex}
+                    type="button"
+                    onClick={() => onDrawColorChange?.(hex)}
+                    style={{ backgroundColor: hex }}
+                    title={hex}
+                    className={`w-3.5 h-3.5 rounded-full transition-transform ${
+                      drawColor?.toLowerCase() === hex.toLowerCase()
+                        ? 'scale-125 ring-2 ring-white'
+                        : 'hover:scale-110 opacity-70 hover:opacity-100'
+                    }`}
+                  />
+                ))}
+              </div>
+            </div>
+          )}
+
+          {rangeStart !== null && liveRangeEnd !== null && (
+            <div className="flex items-center gap-1.5 px-1 text-[10px] text-zinc-500">
+              <span className={`font-mono ${hasValidRange ? 'text-amber-400' : 'text-zinc-500'}`}>
+                Range {formatTimecode(Math.min(rangeStart, liveRangeEnd))} → {formatTimecode(Math.max(rangeStart, liveRangeEnd))}
+              </span>
+              {!hasValidRange && <span>— drag the timeline to extend it</span>}
+              {hasValidRange && !draftPin && (
+                <button
+                  type="button"
+                  title="Clear range"
+                  onClick={() => onClearRangeStart?.()}
+                  className="text-zinc-500 hover:text-rose-400"
+                >
+                  <X className="w-3 h-3" />
+                </button>
+              )}
+            </div>
+          )}
+
+          <div className="flex items-center gap-2 px-1">
+            {draftPin ? (
+              <span className="flex items-center gap-1 px-2 py-1 rounded-md bg-teal-950/40 border border-teal-500/40 font-mono text-[11px] font-semibold text-teal-400 shrink-0">
+                {draftPin.drawingData ? <Pencil className="w-3 h-3" /> : <MapPin className="w-3 h-3" />}
+                {formatTimecode(draftPin.timestamp)}
+              </span>
+            ) : (
+              <span className="px-2 py-1 rounded-md bg-zinc-900 border border-zinc-800 font-mono text-[11px] font-semibold text-amber-400 shrink-0">
+                {formatTimecode(rangeStart ?? currentTimestamp)}
+              </span>
+            )}
+
+            {draftPin ? (
+              <button
+                type="button"
+                title="Cancel"
+                onClick={() => {
+                  onClearDraftPin?.();
+                  setQuickText('');
+                }}
+                className="p-1.5 rounded-lg text-zinc-400 hover:text-rose-400 hover:bg-zinc-900 transition-colors shrink-0"
+              >
+                <X className="w-3.5 h-3.5" />
+              </button>
+            ) : (
+              <button
+                type="button"
+                title="Annotation tools"
+                onClick={() => setShowQuickTools((v) => !v)}
+                className={`p-1.5 rounded-lg transition-colors shrink-0 ${
+                  showQuickTools || activeTool ? 'bg-teal-600 text-white' : 'text-zinc-400 hover:text-zinc-200 hover:bg-zinc-900'
+                }`}
+              >
+                <Pencil className="w-3.5 h-3.5" />
+              </button>
+            )}
+            <input
+              ref={quickInputRef}
+              value={quickText}
+              onChange={(e) => setQuickText(e.target.value)}
+              onFocus={handleQuickComposerFocus}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' && !e.shiftKey) {
+                  e.preventDefault();
+                  handleQuickComment();
+                }
+              }}
+              placeholder={
+                draftPin
+                  ? draftPin.drawingData
+                    ? 'Add feedback for your drawing...'
+                    : 'Add feedback for this pinned point...'
+                  : 'Leave your comment...'
+              }
+              className="flex-1 min-w-0 bg-transparent text-base sm:text-xs text-zinc-200 placeholder-zinc-500 focus:outline-none py-1"
+            />
+            <button
+              onClick={handleQuickComment}
+              disabled={!quickText.trim() || isQuickSubmitting}
+              title="Send"
+              className="p-1.5 rounded-lg bg-teal-600 hover:bg-teal-500 disabled:opacity-40 disabled:cursor-not-allowed text-white transition-colors shrink-0"
+            >
+              <Send className="w-3.5 h-3.5" />
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

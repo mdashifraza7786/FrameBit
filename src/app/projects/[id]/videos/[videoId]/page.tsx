@@ -1,25 +1,19 @@
 'use client';
 
-import React, { useEffect, useState, use, useCallback, Suspense } from 'react';
+import React, { useEffect, useState, useRef, use, useCallback, Suspense } from 'react';
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { AppLayout } from '@/components/layout/AppLayout';
 import { useAuth } from '@/context/AuthContext';
 import {
   ChevronRight,
   Share2,
-  Film,
-  Sparkles,
+  Home,
   ArrowLeft,
-  Info,
-  Calendar,
-  Layers,
-  MessageSquare,
   PanelRightClose,
   PanelRightOpen,
   SlidersHorizontal,
 } from 'lucide-react';
-import { VideoPlayer } from '@/components/video/VideoPlayer';
+import { VideoPlayer, type ActiveTool, type VideoPlayerHandle } from '@/components/video/VideoPlayer';
 import { CommentSidebar } from '@/components/video/CommentSidebar';
 import { StatusBadge } from '@/components/video/StatusBadge';
 import { VersionSelector } from '@/components/video/VersionSelector';
@@ -36,7 +30,13 @@ function VideoReviewContent({
   const { id: projectId, videoId } = use(params);
   const searchParams = useSearchParams();
   const router = useRouter();
-  const { user } = useAuth();
+  const { user, loading: authLoading } = useAuth();
+
+  useEffect(() => {
+    if (!authLoading && !user) {
+      router.push('/login');
+    }
+  }, [authLoading, user, router]);
 
   const [asset, setAsset] = useState<VideoAssetData | null>(null);
   const [project, setProject] = useState<ProjectData | null>(null);
@@ -54,6 +54,26 @@ function VideoReviewContent({
   const [draftPin, setDraftPin] = useState<{ x: number; y: number; timestamp: number; drawingData?: string } | null>(null);
   const [annotationFilter, setAnnotationFilter] = useState<'all' | 'active' | 'resolved'>('all');
   const [commentSidebarOpen, setCommentSidebarOpen] = useState(true);
+
+  // Shared annotation tool state — driven by either the video's own toolbar or the comment composer's pen icon
+  const [activeTool, setActiveTool] = useState<ActiveTool>(null);
+  const [drawColor, setDrawColor] = useState('#06b6d4');
+  const [drawStrokeWidth, setDrawStrokeWidth] = useState(0.8);
+  const [livePlayheadTime, setLivePlayheadTime] = useState(0);
+  // Anchors the start of a possible time-range comment — set the moment composing begins (pin/drawing dropped,
+  // or the plain comment box is focused), independent of whether a pin/drawing exists at all.
+  const [rangeStart, setRangeStart] = useState<number | null>(null);
+  // Mirrors the video's own range-end drag value, purely for the sidebar's display + submit logic.
+  const [rangeEnd, setRangeEnd] = useState<number | null>(null);
+  const videoPlayerRef = useRef<VideoPlayerHandle>(null);
+
+  // Pause playback and read the exact frozen time synchronously — called when the comment composer is focused
+  const handleRequestPause = useCallback(() => {
+    videoPlayerRef.current?.pause();
+    const t = videoPlayerRef.current?.getCurrentTime() ?? 0;
+    setLivePlayheadTime(t);
+    setRangeStart(t);
+  }, []);
 
   const fetchVideoDetails = useCallback(async () => {
     try {
@@ -236,7 +256,7 @@ function VideoReviewContent({
   };
 
   const handleSelectComment = (commentId: string, timestamp: number) => {
-    setActiveCommentId(commentId);
+    setActiveCommentId((prev) => (prev === commentId ? null : commentId));
     setSeekToTime(timestamp);
   };
 
@@ -285,184 +305,203 @@ function VideoReviewContent({
   const displayTitle =
     asset && currentVersionNumber >= 2 ? `${asset.name} - v${currentVersionNumber}` : asset?.name;
 
-  if (loading) {
+  if (loading || authLoading || !user) {
     return (
-      <AppLayout>
-        <div className="flex items-center justify-center py-24">
-          <div className="w-8 h-8 border-2 border-brand-500/30 border-t-brand-500 dark:border-teal-500/30 dark:border-t-teal-500 rounded-full animate-spin" />
-        </div>
-      </AppLayout>
+      <div className="dark fixed inset-0 bg-black flex items-center justify-center">
+        <div className="w-8 h-8 border-2 border-teal-500/30 border-t-teal-500 rounded-full animate-spin" />
+      </div>
     );
   }
 
   if (!asset) return null;
 
   return (
-    <AppLayout>
-      <div className="max-w-[1600px] mx-auto space-y-5 animate-in fade-in duration-200">
-        {/* Top Header Bar */}
-        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 pb-4 border-b border-zinc-800/80">
-          {/* Breadcrumbs & Title */}
-          <div className="space-y-1 min-w-0">
-            <div className="flex items-center gap-2 text-xs text-slate-500 dark:text-zinc-500 font-medium">
-              <Link href={`/projects/${projectId}`} className="hover:text-brand-600 dark:hover:text-zinc-300 flex items-center gap-1 transition-colors">
-                <ArrowLeft className="w-3.5 h-3.5" />
-                <span>{project?.name || 'Project'}</span>
-              </Link>
-              <ChevronRight className="w-3.5 h-3.5" />
-              <span className="text-slate-800 dark:text-zinc-300 font-semibold truncate">{displayTitle}</span>
-            </div>
+    <div className="dark fixed inset-0 h-[100dvh] max-h-[100dvh] z-40 bg-black text-zinc-100 flex flex-col overflow-hidden animate-in fade-in duration-200">
+      {/* Top Bar: Breadcrumb + Actions */}
+      <header className="h-12 sm:h-14 shrink-0 flex items-center justify-between gap-1.5 sm:gap-4 px-2 sm:px-4 border-b border-zinc-800/80 bg-zinc-950/90 backdrop-blur-sm z-30">
+        {/* Left: Home + Breadcrumb + Version */}
+        <div className="flex items-center gap-1.5 sm:gap-2.5 min-w-0">
+          <Link
+            href="/dashboard"
+            title="Back to Dashboard"
+            className="p-1.5 rounded-lg text-zinc-500 hover:text-teal-400 hover:bg-zinc-900 transition-colors shrink-0"
+          >
+            <Home className="w-4 h-4" />
+          </Link>
 
-            <div className="flex items-center gap-3">
-              <h1 className="text-xl sm:text-2xl font-bold tracking-tight text-slate-900 dark:text-white truncate">
-                {displayTitle}
-              </h1>
+          <div className="w-px h-4 sm:h-5 bg-zinc-800 shrink-0" />
 
-              {/* Version Switcher */}
-              <VersionSelector
-                versions={versions}
-                currentVersionNumber={currentVersionNumber}
-                onSelectVersion={(ver) => setCurrentVersionNumber(ver)}
-                onUploadNewVersion={() => setUploadVersionModalOpen(true)}
-                onDeleteVersion={handleDeleteVersion}
-                onDeleteAsset={handleDeleteAsset}
-                canManage={canUpload}
-              />
-            </div>
-          </div>
+          <Link
+            href={`/projects/${projectId}`}
+            className="hidden sm:flex items-center gap-1 text-xs text-zinc-500 hover:text-zinc-300 transition-colors shrink-0"
+          >
+            <ArrowLeft className="w-3.5 h-3.5" />
+            <span className="max-w-[120px] truncate">{project?.name || 'Project'}</span>
+          </Link>
+          <ChevronRight className="hidden sm:block w-3.5 h-3.5 text-zinc-700 shrink-0" />
 
-          {/* Right Action Bar */}
-          <div className="flex items-center gap-3 shrink-0">
-            {/* Compare Versions Button (only if 2+ versions) */}
-            {versions.length >= 2 && (
-              <button
-                onClick={() => setCompareModalOpen(true)}
-                className="px-3.5 py-2 rounded-xl bg-white dark:bg-zinc-900 hover:bg-slate-100 dark:hover:bg-zinc-800 border border-slate-300 dark:border-zinc-700/80 text-xs font-semibold text-slate-700 dark:text-zinc-200 flex items-center gap-2 transition-all shadow-sm"
-              >
-                <SlidersHorizontal className="w-4 h-4 text-purple-600 dark:text-purple-400" />
-                <span>Compare</span>
-              </button>
-            )}
+          <span className="text-xs sm:text-sm font-semibold text-zinc-200 truncate max-w-[100px] xs:max-w-[140px] sm:max-w-[220px] md:max-w-[340px]">
+            {displayTitle}
+          </span>
 
-            {/* Review Status & Actions (Only for Owner & Reviewer) */}
-            <StatusBadge
-              status={asset.status}
-              canChangeStatus={canChangeStatus}
-              onStatusChange={handleStatusChange}
-            />
-
-            {/* Share Button (Only for Owner & Reviewer) */}
-            {canShare && (
-              <button
-                onClick={() => setShareModalOpen(true)}
-                className="px-3.5 py-2 rounded-xl bg-white dark:bg-zinc-900 hover:bg-slate-100 dark:hover:bg-zinc-800 border border-slate-300 dark:border-zinc-700/80 text-xs font-semibold text-slate-700 dark:text-zinc-200 flex items-center gap-2 transition-all shadow-sm"
-              >
-                <Share2 className="w-4 h-4 text-brand-600 dark:text-teal-400" />
-                <span>Share</span>
-              </button>
-            )}
-          </div>
+          <VersionSelector
+            versions={versions}
+            currentVersionNumber={currentVersionNumber}
+            onSelectVersion={(ver) => setCurrentVersionNumber(ver)}
+            onUploadNewVersion={() => setUploadVersionModalOpen(true)}
+            onDeleteVersion={handleDeleteVersion}
+            onDeleteAsset={handleDeleteAsset}
+            canManage={canUpload}
+          />
         </div>
 
-        {/* Workspace Layout: Left Player + Right Comments (collapsible sidebar) */}
-        <div className="flex gap-6 items-start relative">
-          {/* Main Video Review Player */}
-          <div className={`flex-1 min-w-0 space-y-4 transition-all duration-300`}>
-            <VideoPlayer
-              src={streamSrc}
-              comments={comments.filter((c) => c.versionNumber === currentVersionNumber)}
+        {/* Right: Compare / Status / Share / Collapse toggle */}
+        <div className="flex items-center gap-1 sm:gap-2 shrink-0">
+          {versions.length >= 2 && (
+            <button
+              onClick={() => setCompareModalOpen(true)}
+              className="px-2 sm:px-3 py-1 sm:py-1.5 rounded-xl bg-zinc-900 hover:bg-zinc-800 border border-zinc-700/80 text-xs font-semibold text-zinc-200 flex items-center gap-1.5 transition-all shrink-0"
+              title="Compare versions"
+            >
+              <SlidersHorizontal className="w-3.5 h-3.5 text-purple-400" />
+              <span className="hidden md:inline">Compare</span>
+            </button>
+          )}
+
+          <StatusBadge status={asset.status} canChangeStatus={canChangeStatus} onStatusChange={handleStatusChange} />
+
+          {canShare && (
+            <button
+              onClick={() => setShareModalOpen(true)}
+              className="px-2 sm:px-3 py-1 sm:py-1.5 rounded-xl bg-teal-600 hover:bg-teal-500 text-xs font-semibold text-white flex items-center gap-1.5 shadow-md shadow-teal-600/20 transition-all shrink-0"
+              title="Share video"
+            >
+              <Share2 className="w-3.5 h-3.5" />
+              <span className="hidden sm:inline">Share</span>
+            </button>
+          )}
+
+          <button
+            onClick={() => setCommentSidebarOpen((v) => !v)}
+            title={commentSidebarOpen ? 'Hide comments' : 'Show comments'}
+            className="hidden md:flex p-1.5 rounded-lg text-zinc-400 hover:text-teal-400 hover:bg-zinc-900 border border-transparent hover:border-zinc-800 transition-colors relative shrink-0"
+          >
+            {commentSidebarOpen ? <PanelRightClose className="w-4 h-4" /> : <PanelRightOpen className="w-4 h-4" />}
+            {!commentSidebarOpen && (
+              <span className="absolute -top-1 -right-1 flex items-center justify-center min-w-[16px] h-4 px-1 rounded-full bg-teal-600 text-white text-[9px] font-bold">
+                {comments.filter((c) => c.versionNumber === currentVersionNumber && !c.parentCommentId).length}
+              </span>
+            )}
+          </button>
+        </div>
+      </header>
+
+      {/* Workspace: Video Stage + Comments Panel — stacked on mobile with pinned video, side-by-side on md+ screens */}
+      <div className="flex-1 min-h-0 flex flex-col md:flex-row overflow-hidden">
+        {/* Video Stage: Fixed height ratio on mobile so it never jumps or gets pushed off-screen when typing comments */}
+        <div className="w-full md:flex-1 md:min-w-0 md:min-h-0 h-[38vh] sm:h-[44vh] md:h-full shrink-0 md:shrink flex flex-col bg-black overflow-hidden relative z-10">
+          <VideoPlayer
+            ref={videoPlayerRef}
+            theaterMode
+            src={streamSrc}
+            comments={comments.filter((c) => c.versionNumber === currentVersionNumber)}
+            activeCommentId={activeCommentId}
+            annotationFilter={annotationFilter}
+            onFilterChange={setAnnotationFilter}
+            onSelectComment={handleSelectComment}
+            onAddCommentAtTime={handleAddCommentAtTime}
+            onAddComment={handleAddComment}
+            seekToTime={seekToTime}
+            draftPin={draftPin}
+            onDraftPinChange={(pin) => {
+              setDraftPin(pin);
+              if (pin) setRangeStart(pin.timestamp);
+            }}
+            currentUser={user}
+            onResolveComment={handleResolveComment}
+            onDeleteComment={handleDeleteComment}
+            activeTool={activeTool}
+            onActiveToolChange={setActiveTool}
+            drawColor={drawColor}
+            onDrawColorChange={setDrawColor}
+            drawStrokeWidth={drawStrokeWidth}
+            onDrawStrokeWidthChange={setDrawStrokeWidth}
+            onTimeUpdate={setLivePlayheadTime}
+            onPlaybackPause={(t) => {
+              // A pin/drawing already anchors its own range start — don't let an unrelated pause drift it.
+              if (!draftPin) setRangeStart(t);
+            }}
+            rangeStart={rangeStart}
+            onRangeEndChange={setRangeEnd}
+          />
+        </div>
+
+        {/* Comments Panel */}
+        {commentSidebarOpen && (
+          <div className="flex-1 md:flex-none min-h-0 w-full md:w-[360px] lg:w-[380px] xl:w-[420px] border-t md:border-t-0 md:border-l border-zinc-800/80 flex flex-col overflow-hidden bg-zinc-950 relative z-20">
+            <CommentSidebar
+              theaterMode
+              comments={comments}
+              currentTimestamp={livePlayheadTime}
+              currentVersionNumber={currentVersionNumber}
               activeCommentId={activeCommentId}
-              annotationFilter={annotationFilter}
-              onFilterChange={setAnnotationFilter}
-              onSelectComment={handleSelectComment}
-              onAddCommentAtTime={handleAddCommentAtTime}
-              onAddComment={handleAddComment}
-              seekToTime={seekToTime}
-              draftPin={draftPin}
-              onDraftPinChange={setDraftPin}
               currentUser={user}
+              filter={annotationFilter}
+              onFilterChange={setAnnotationFilter}
+              draftPin={draftPin}
+              onClearDraftPin={() => {
+                setDraftPin(null);
+                setRangeStart(null);
+                setRangeEnd(null);
+              }}
+              projectId={projectId}
+              onSeekTo={(t, id) => {
+                setSeekToTime(t);
+                if (id) setActiveCommentId((prev) => (prev === id ? null : id));
+              }}
+              onAddComment={handleAddComment}
               onResolveComment={handleResolveComment}
               onDeleteComment={handleDeleteComment}
+              onEditComment={handleEditComment}
+              activeTool={activeTool}
+              onActiveToolChange={setActiveTool}
+              drawColor={drawColor}
+              onDrawColorChange={setDrawColor}
+              onRequestPause={handleRequestPause}
+              rangeStart={rangeStart}
+              rangeEnd={rangeEnd}
+              onClearRangeStart={() => {
+                setRangeStart(null);
+                setRangeEnd(null);
+              }}
             />
           </div>
-
-          {/* Collapsible Comment Sidebar */}
-          <div className={`relative flex-shrink-0 transition-all duration-300 ease-in-out ${commentSidebarOpen ? 'w-80 xl:w-96' : 'w-0'}`}>
-            {/* Toggle button */}
-            <button
-              onClick={() => setCommentSidebarOpen(!commentSidebarOpen)}
-              title={commentSidebarOpen ? 'Collapse comments' : 'Expand comments'}
-              className={`absolute top-0 z-20 flex items-center justify-center w-7 h-7 rounded-full bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-700 shadow-md text-slate-500 dark:text-zinc-400 hover:text-brand-600 dark:hover:text-teal-400 hover:border-brand-500/40 dark:hover:border-teal-500/40 transition-all ${commentSidebarOpen ? '-left-3.5' : '-left-8'}`}
-            >
-              {commentSidebarOpen ? <PanelRightClose className="w-3.5 h-3.5" /> : <PanelRightOpen className="w-3.5 h-3.5" />}
-            </button>
-
-            {/* Sidebar content */}
-            {commentSidebarOpen && (
-              <div className="h-[420px] lg:h-[450px] xl:h-[480px] max-h-[500px] flex flex-col min-w-0 w-full">
-                <CommentSidebar
-                  comments={comments}
-                  currentTimestamp={seekToTime || 0}
-                  currentVersionNumber={currentVersionNumber}
-                  activeCommentId={activeCommentId}
-                  currentUser={user}
-                  filter={annotationFilter}
-                  onFilterChange={setAnnotationFilter}
-                  draftPin={draftPin}
-                  onClearDraftPin={() => setDraftPin(null)}
-                  projectId={projectId}
-                  onSeekTo={(t, id) => {
-                    setSeekToTime(t);
-                    if (id) setActiveCommentId(id);
-                  }}
-                  onAddComment={handleAddComment}
-                  onResolveComment={handleResolveComment}
-                  onDeleteComment={handleDeleteComment}
-                  onEditComment={handleEditComment}
-                />
-              </div>
-            )}
-
-            {/* Comment count badge when collapsed */}
-            {!commentSidebarOpen && (
-              <div className="absolute -left-12 top-10 flex flex-col items-center gap-1">
-                <div className="flex items-center gap-1 bg-brand-600 dark:bg-teal-600 text-white text-[10px] font-bold px-2 py-1 rounded-full shadow-md">
-                  <MessageSquare className="w-3 h-3" />
-                  {comments.filter(c => c.versionNumber === currentVersionNumber && !c.parentCommentId).length}
-                </div>
-              </div>
-            )}
-          </div>
-        </div>
-
-        {/* Upload New Version Modal */}
-        <UploadModal
-          isOpen={uploadVersionModalOpen}
-          onClose={() => setUploadVersionModalOpen(false)}
-          projectId={projectId}
-          assetId={videoId}
-          existingAssetName={asset.name}
-          onSuccess={fetchVideoDetails}
-        />
-
-        {/* Share Link Modal */}
-        <ShareModal
-          isOpen={shareModalOpen}
-          onClose={() => setShareModalOpen(false)}
-          videoId={videoId}
-          videoTitle={asset.name}
-        />
-
-        {/* Version Comparison Modal */}
-        {compareModalOpen && versions.length >= 2 && (
-          <VersionComparison
-            versions={versions}
-            videoId={videoId}
-            onClose={() => setCompareModalOpen(false)}
-          />
         )}
       </div>
-    </AppLayout>
+
+      {/* Upload New Version Modal */}
+      <UploadModal
+        isOpen={uploadVersionModalOpen}
+        onClose={() => setUploadVersionModalOpen(false)}
+        projectId={projectId}
+        assetId={videoId}
+        existingAssetName={asset.name}
+        onSuccess={fetchVideoDetails}
+      />
+
+      {/* Share Link Modal */}
+      <ShareModal
+        isOpen={shareModalOpen}
+        onClose={() => setShareModalOpen(false)}
+        videoId={videoId}
+        videoTitle={asset.name}
+      />
+
+      {/* Version Comparison Modal */}
+      {compareModalOpen && versions.length >= 2 && (
+        <VersionComparison versions={versions} videoId={videoId} onClose={() => setCompareModalOpen(false)} />
+      )}
+    </div>
   );
 }
 

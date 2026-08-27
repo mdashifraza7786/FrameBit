@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useRef, useState, useEffect, useCallback, useMemo } from 'react';
+import React, { useRef, useState, useEffect, useCallback, useMemo, forwardRef, useImperativeHandle } from 'react';
 import {
   Play,
   Pause,
@@ -67,6 +67,33 @@ interface VideoPlayerProps {
   currentUser?: UserProfile | null;
   onResolveComment?: (commentId: string, resolved: boolean) => Promise<void>;
   onDeleteComment?: (commentId: string) => Promise<void>;
+  /** Full-bleed cinema layout: fills parent height, no card border/rounding, no fixed aspect ratio. */
+  theaterMode?: boolean;
+  /** Controlled annotation tool — lets an external composer (e.g. the comment sidebar) drive the same tool state. */
+  activeTool?: ActiveTool;
+  onActiveToolChange?: (tool: ActiveTool) => void;
+  drawColor?: string;
+  onDrawColorChange?: (color: string) => void;
+  drawStrokeWidth?: number;
+  onDrawStrokeWidthChange?: (width: number) => void;
+  /** Reports the live playhead time (native timeupdate cadence, not per-frame). */
+  onTimeUpdate?: (time: number) => void;
+  /** Fires every time playback actually pauses (any cause), with the exact time it paused at. */
+  onPlaybackPause?: (time: number) => void;
+  /** Controlled time-range mode — lets an external composer (e.g. the comment sidebar) start/stop it. */
+  isRangeMode?: boolean;
+  onRangeModeChange?: (on: boolean) => void;
+  /** Theater mode: anchors the start of a possible time-range comment, independent of any pin/drawing. */
+  rangeStart?: number | null;
+  /** Mirrors the range-end drag value for an external composer's own display (e.g. the comment sidebar). */
+  onRangeEndChange?: (time: number | null) => void;
+}
+
+export interface VideoPlayerHandle {
+  /** Pauses playback immediately (synchronous — safe to read currentTime right after). */
+  pause: () => void;
+  /** Current playhead time, read synchronously straight off the <video> element. */
+  getCurrentTime: () => number;
 }
 
 const DRAW_COLORS = [
@@ -76,6 +103,34 @@ const DRAW_COLORS = [
   { name: 'Rose', hex: '#f43f5e', ring: 'ring-rose-500' },
   { name: 'Purple', hex: '#a855f7', ring: 'ring-purple-500' },
 ];
+
+// One consistent marker color per commenter (not per comment type) — same account always gets the same badge color.
+const AUTHOR_MARKER_COLORS = [
+  'bg-teal-600 border-teal-300',
+  'bg-purple-600 border-purple-300',
+  'bg-amber-600 border-amber-300',
+  'bg-rose-600 border-rose-300',
+  'bg-cyan-600 border-cyan-300',
+  'bg-emerald-600 border-emerald-300',
+  'bg-indigo-600 border-indigo-300',
+  'bg-pink-600 border-pink-300',
+];
+
+function getAuthorMarkerColor(key: string): string {
+  let hash = 0;
+  for (let i = 0; i < key.length; i++) hash = (hash * 31 + key.charCodeAt(i)) >>> 0;
+  return AUTHOR_MARKER_COLORS[hash % AUTHOR_MARKER_COLORS.length];
+}
+
+function formatRelativeTime(dateStr: string): string {
+  const diffSec = Math.max(0, Math.floor((Date.now() - new Date(dateStr).getTime()) / 1000));
+  if (diffSec < 60) return 'now';
+  const diffMin = Math.floor(diffSec / 60);
+  if (diffMin < 60) return `${diffMin}m`;
+  const diffHr = Math.floor(diffMin / 60);
+  if (diffHr < 24) return `${diffHr}h`;
+  return `${Math.floor(diffHr / 24)}d`;
+}
 
 // Calculate safe clamped on-screen box positioning within the video viewport bounds (never overflowing screen)
 const getClampedPopoverStyle = (x: number, y: number) => {
@@ -192,7 +247,7 @@ const parseDrawingData = (data: any): { path: string; color: string; width: numb
   return null;
 };
 
-export function VideoPlayer({
+export const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(function VideoPlayer({
   src,
   comments,
   activeCommentId,
@@ -208,13 +263,75 @@ export function VideoPlayer({
   currentUser,
   onResolveComment,
   onDeleteComment,
-}: VideoPlayerProps) {
+  theaterMode = false,
+  activeTool: externalActiveTool,
+  onActiveToolChange,
+  drawColor: externalDrawColor,
+  onDrawColorChange,
+  drawStrokeWidth: externalDrawStrokeWidth,
+  onDrawStrokeWidthChange,
+  onTimeUpdate,
+  onPlaybackPause,
+  isRangeMode: externalRangeMode,
+  onRangeModeChange,
+  rangeStart = null,
+  onRangeEndChange,
+}, ref) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const viewportRef = useRef<HTMLDivElement>(null);
   const timelineRef = useRef<HTMLDivElement>(null);
   const isScrubbingRef = useRef(false);
   const wasPlayingBeforeScrubRef = useRef(false);
+  const isDraggingRangeRef = useRef(false);
+
+  // Range end — dragged on its own dedicated mini-track (a few px below the main timeline), completely
+  // separate from scrubbing/seeking the video itself, so setting a range never moves the playhead.
+  const [dragRangeEnd, setDragRangeEnd] = useState<number | null>(null);
+  const onRangeEndChangeRef = useRef(onRangeEndChange);
+  useEffect(() => {
+    onRangeEndChangeRef.current = onRangeEndChange;
+  });
+  useEffect(() => {
+    setDragRangeEnd(rangeStart);
+    onRangeEndChangeRef.current?.(rangeStart);
+  }, [rangeStart]);
+
+  // The actual on-screen rect of the video's pixels within the (possibly differently-shaped) viewport —
+  // object-contain letterboxes/pillarboxes a video whose aspect ratio doesn't match the viewport's, so pins,
+  // drawings and click coordinates must be measured against this rect, not the full viewport.
+  const [videoRect, setVideoRect] = useState<{ left: number; top: number; width: number; height: number } | null>(
+    null
+  );
+
+  const recalcVideoRect = useCallback(() => {
+    const vp = viewportRef.current;
+    const vid = videoRef.current;
+    if (!vp || !vid || !vid.videoWidth || !vid.videoHeight) return;
+    const cw = vp.clientWidth;
+    const ch = vp.clientHeight;
+    if (!cw || !ch) return;
+    const videoAspect = vid.videoWidth / vid.videoHeight;
+    const containerAspect = cw / ch;
+    let width: number, height: number;
+    if (videoAspect > containerAspect) {
+      width = cw;
+      height = cw / videoAspect;
+    } else {
+      height = ch;
+      width = ch * videoAspect;
+    }
+    setVideoRect({ left: (cw - width) / 2, top: (ch - height) / 2, width, height });
+  }, []);
+
+  // Recompute whenever the viewport itself resizes (window resize, sidebar toggle, fullscreen, theater layout)
+  useEffect(() => {
+    const vp = viewportRef.current;
+    if (!vp) return;
+    const ro = new ResizeObserver(() => recalcVideoRect());
+    ro.observe(vp);
+    return () => ro.disconnect();
+  }, [recalcVideoRect]);
 
   const [internalFilter, setInternalFilter] = useState<'all' | 'active' | 'resolved'>('all');
   const currentFilter = annotationFilter || internalFilter;
@@ -235,13 +352,51 @@ export function VideoPlayer({
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [hoverTime, setHoverTime] = useState<number | null>(null);
   const [hoverX, setHoverX] = useState<number | null>(null);
-  const [showSMPTE, setShowSMPTE] = useState(true);
+  // Theater mode defaults to a plain MM:SS readout (no frame count) — still toggleable by clicking the timecode.
+  const [showSMPTE, setShowSMPTE] = useState(!theaterMode);
   const [fps] = useState(30);
 
   // Active Tool Mode: null (Normal Play Mode) | 'pin' | 'draw' | 'rectangle' | 'circle' | 'arrow'
-  const [activeTool, setActiveTool] = useState<ActiveTool>(null);
-  const [drawColor, setDrawColor] = useState<string>('#06b6d4');
-  const [drawStrokeWidth, setDrawStrokeWidth] = useState<number>(0.8);
+  // Controlled/uncontrolled: falls back to local state unless an external composer (comment sidebar) drives it.
+  const [internalActiveTool, setInternalActiveTool] = useState<ActiveTool>(null);
+  const activeTool = externalActiveTool !== undefined ? externalActiveTool : internalActiveTool;
+  // Mirrors `activeTool` for synchronous reads inside setActiveTool — resolving the updater against
+  // this ref (rather than inside the setInternalActiveTool callback) avoids calling onActiveToolChange
+  // from within a React state-updater function, which React rejects as a cross-component render-time update.
+  const activeToolRef = useRef<ActiveTool>(activeTool);
+  useEffect(() => {
+    activeToolRef.current = activeTool;
+  }, [activeTool]);
+  const setActiveTool = useCallback(
+    (updater: ActiveTool | ((prev: ActiveTool) => ActiveTool)) => {
+      const next = typeof updater === 'function' ? (updater as (p: ActiveTool) => ActiveTool)(activeToolRef.current) : updater;
+      activeToolRef.current = next;
+      setInternalActiveTool(next);
+      onActiveToolChange?.(next);
+    },
+    [onActiveToolChange]
+  );
+
+  const [internalDrawColor, setInternalDrawColor] = useState<string>('#06b6d4');
+  const drawColor = externalDrawColor !== undefined ? externalDrawColor : internalDrawColor;
+  const setDrawColor = useCallback(
+    (color: string) => {
+      setInternalDrawColor(color);
+      onDrawColorChange?.(color);
+    },
+    [onDrawColorChange]
+  );
+
+  const [internalDrawStrokeWidth, setInternalDrawStrokeWidth] = useState<number>(0.8);
+  const drawStrokeWidth = externalDrawStrokeWidth !== undefined ? externalDrawStrokeWidth : internalDrawStrokeWidth;
+  const setDrawStrokeWidth = useCallback(
+    (width: number) => {
+      setInternalDrawStrokeWidth(width);
+      onDrawStrokeWidthChange?.(width);
+    },
+    [onDrawStrokeWidthChange]
+  );
+
   const [showAnnotationTools, setShowAnnotationTools] = useState(false);
 
   // Drawing state
@@ -249,8 +404,20 @@ export function VideoPlayer({
   const currentStrokeRef = useRef<Point[]>([]);
   const [currentStroke, setCurrentStroke] = useState<Point[]>([]);
 
-  // Range comment state — Start = pin timestamp, End = live playhead position while range mode is on
-  const [isRangeMode, setIsRangeMode] = useState(false);
+  // Range comment state — Start = pin timestamp, End = live playhead position while range mode is on.
+  // Controlled/uncontrolled: an external composer (comment sidebar) can start/stop it too.
+  const [internalRangeMode, setInternalRangeMode] = useState(false);
+  const isRangeMode = externalRangeMode !== undefined ? externalRangeMode : internalRangeMode;
+  const setIsRangeMode = useCallback(
+    (updater: boolean | ((prev: boolean) => boolean)) => {
+      setInternalRangeMode((prev) => {
+        const next = typeof updater === 'function' ? (updater as (p: boolean) => boolean)(prev) : updater;
+        onRangeModeChange?.(next);
+        return next;
+      });
+    },
+    [onRangeModeChange]
+  );
 
   // Local draft pin state fallback if not passed externally
   const [internalDraftPin, setInternalDraftPin] = useState<DraftPinData | null>(null);
@@ -270,7 +437,7 @@ export function VideoPlayer({
       setComposerText('');
       setIsRangeMode(false);
     },
-    [onDraftPinChange]
+    [onDraftPinChange, setIsRangeMode]
   );
 
   // Dismissed active callout tracking
@@ -330,6 +497,17 @@ export function VideoPlayer({
     }
   }, [safePlay, safePause]);
 
+  // Imperative handle for the parent page: pause + read the exact current time synchronously,
+  // so a caller (e.g. the comment composer, on focus) can lock in the right timestamp with no event-timing race.
+  useImperativeHandle(
+    ref,
+    () => ({
+      pause: () => safePause(),
+      getCurrentTime: () => videoRef.current?.currentTime ?? 0,
+    }),
+    [safePause]
+  );
+
   const stepFrames = useCallback(
     (deltaFrames: number) => {
       if (!videoRef.current) return;
@@ -338,8 +516,9 @@ export function VideoPlayer({
       const target = Math.max(0, Math.min(duration, videoRef.current.currentTime + deltaFrames * frameDuration));
       videoRef.current.currentTime = target;
       setCurrentTime(target);
+      onTimeUpdate?.(target);
     },
-    [fps, duration, safePause]
+    [fps, duration, safePause, onTimeUpdate]
   );
 
   const toggleFullscreen = useCallback(() => {
@@ -397,10 +576,11 @@ export function VideoPlayer({
     if (seekToTime !== undefined && seekToTime !== null && videoRef.current) {
       videoRef.current.currentTime = seekToTime;
       setCurrentTime(seekToTime);
+      onTimeUpdate?.(seekToTime);
       safePause();
       setDismissedCalloutId(null);
     }
-  }, [seekToTime, safePause]);
+  }, [seekToTime, safePause, onTimeUpdate]);
 
   // Keyboard Shortcuts (J, K, L, Space, Arrow keys, C, P, D, Esc)
   useEffect(() => {
@@ -471,7 +651,7 @@ export function VideoPlayer({
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [togglePlay, safePause, stepFrames, toggleFullscreen, duration, currentTime, fps, isPlaying, onAddCommentAtTime, setDraftPin]);
+  }, [togglePlay, safePause, stepFrames, toggleFullscreen, duration, currentTime, fps, isPlaying, onAddCommentAtTime, setDraftPin, setActiveTool]);
 
   // Convert points array to smooth SVG path string (0-100% normalized)
   const pointsToSvgPath = (pts: Point[]) => {
@@ -503,9 +683,16 @@ export function VideoPlayer({
       safePause();
     }
 
+    if (!videoRect) return;
+
     const rect = viewportRef.current.getBoundingClientRect();
-    const x = Math.max(3, Math.min(97, ((e.clientX - rect.left) / rect.width) * 100));
-    const y = Math.max(3, Math.min(97, ((e.clientY - rect.top) / rect.height) * 100));
+    const relX = e.clientX - rect.left - videoRect.left;
+    const relY = e.clientY - rect.top - videoRect.top;
+    // Ignore clicks that land in the letterbox/pillarbox bars — outside the video's own pixels
+    if (relX < 0 || relX > videoRect.width || relY < 0 || relY > videoRect.height) return;
+
+    const x = Math.max(3, Math.min(97, (relX / videoRect.width) * 100));
+    const y = Math.max(3, Math.min(97, (relY / videoRect.height) * 100));
 
     if (activeTool === 'pin') {
       // Pin Mode: Direct click drops pin and opens on-screen floating composer
@@ -528,10 +715,12 @@ export function VideoPlayer({
   };
 
   const handleViewportPointerMove = (e: React.PointerEvent<HTMLDivElement>) => {
-    if (!viewportRef.current) return;
+    if (!viewportRef.current || !videoRect) return;
     const rect = viewportRef.current.getBoundingClientRect();
-    const x = Math.max(0, Math.min(100, ((e.clientX - rect.left) / rect.width) * 100));
-    const y = Math.max(0, Math.min(100, ((e.clientY - rect.top) / rect.height) * 100));
+    const relX = e.clientX - rect.left - videoRect.left;
+    const relY = e.clientY - rect.top - videoRect.top;
+    const x = Math.max(0, Math.min(100, (relX / videoRect.width) * 100));
+    const y = Math.max(0, Math.min(100, (relY / videoRect.height) * 100));
 
     if (isDrawingRef.current && activeTool) {
       if (activeTool === 'draw') {
@@ -651,6 +840,7 @@ export function VideoPlayer({
     const targetTime = getTimeFromClientX(e.clientX);
     videoRef.current.currentTime = targetTime;
     setCurrentTime(targetTime);
+    onTimeUpdate?.(targetTime);
   };
 
   const handleTimelinePointerMove = (e: React.PointerEvent<HTMLDivElement>) => {
@@ -665,6 +855,7 @@ export function VideoPlayer({
     if (isScrubbingRef.current && videoRef.current) {
       videoRef.current.currentTime = timeAtCursor;
       setCurrentTime(timeAtCursor);
+      onTimeUpdate?.(timeAtCursor);
     }
   };
 
@@ -680,7 +871,55 @@ export function VideoPlayer({
 
     if (wasPlayingBeforeScrubRef.current) {
       safePlay();
+    } else if (videoRef.current) {
+      // Landed here paused (it was already paused before this scrub too) — the native 'pause' event won't
+      // re-fire since there's no playing→paused transition, so report the new anchor point directly.
+      onPlaybackPause?.(videoRef.current.currentTime);
     }
+  };
+
+  // Range end-handle drag — grabbing the small handle itself (not a separate background track) moves it.
+  // The video frame previews live at that timestamp as you drag (so you can see what's there), but this
+  // never touches `rangeStart` and — since the video stays paused throughout — never fires a pause event either.
+  const handleRangeHandlePointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
+    if (duration === 0 || rangeStart === null) return;
+    e.stopPropagation();
+    (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+    isDraggingRangeRef.current = true;
+    const t = getTimeFromClientX(e.clientX);
+    const clamped = Math.max(rangeStart, Math.min(duration, t));
+    setDragRangeEnd(clamped);
+    onRangeEndChangeRef.current?.(clamped);
+    if (videoRef.current) {
+      videoRef.current.currentTime = clamped;
+      setCurrentTime(clamped);
+      onTimeUpdate?.(clamped);
+    }
+  };
+
+  const handleRangeHandlePointerMove = (e: React.PointerEvent<HTMLDivElement>) => {
+    if (!isDraggingRangeRef.current || duration === 0 || rangeStart === null) return;
+    e.stopPropagation();
+    const t = getTimeFromClientX(e.clientX);
+    const clamped = Math.max(rangeStart, Math.min(duration, t));
+    setDragRangeEnd(clamped);
+    onRangeEndChangeRef.current?.(clamped);
+    if (videoRef.current) {
+      videoRef.current.currentTime = clamped;
+      setCurrentTime(clamped);
+      onTimeUpdate?.(clamped);
+    }
+  };
+
+  const handleRangeHandlePointerUp = (e: React.PointerEvent<HTMLDivElement>) => {
+    if (!isDraggingRangeRef.current) return;
+    e.stopPropagation();
+    try {
+      (e.currentTarget as HTMLElement).releasePointerCapture(e.pointerId);
+    } catch {
+      // Ignored
+    }
+    isDraggingRangeRef.current = false;
   };
 
   const currentFrame = Math.floor(currentTime * fps);
@@ -697,7 +936,8 @@ export function VideoPlayer({
     });
   }, [comments, currentFilter]);
 
-  // Spatial pin / drawing comments visible near current timestamp (during playback: 3.0s window; paused: 3.0s window) or active comment
+  // Spatial pin / drawing comments visible near current timestamp (during playback: 3.0s window; paused: 3.0s window) or active comment.
+  // In theater mode this auto-reveal is dropped entirely — a pin/drawing only shows once its marker or comment is clicked (toggles on/off).
   const visibleComments = useMemo(() => {
     return comments.filter((c) => {
       if (c.parentCommentId) return false;
@@ -707,6 +947,18 @@ export function VideoPlayer({
       if (currentFilter === 'resolved' && !c.resolved && activeCommentId !== c._id) return false;
 
       const isActive = activeCommentId === c._id;
+      if (theaterMode) {
+        // Toggled on via marker/comment click, but only actually rendered right at its own timestamp
+        // (a tiny epsilon to absorb seek/frame precision) — so it never stays stuck on screen once
+        // playback moves past that exact instant. Scrubbing back onto it brings it back automatically.
+        if (!isActive) return false;
+        const EPSILON = 0.15;
+        if (c.timestampEnd && c.timestampEnd > c.timestamp) {
+          return currentTime >= c.timestamp - EPSILON && currentTime <= c.timestampEnd + EPSILON;
+        }
+        return Math.abs(currentTime - c.timestamp) <= EPSILON;
+      }
+
       // Range comments stay visible for their full timestamp -> timestampEnd span
       const windowEnd = c.timestampEnd && c.timestampEnd > c.timestamp ? c.timestampEnd : c.timestamp + 2.8;
       const isPlaybackActive = isPlaying && currentTime >= c.timestamp - 0.2 && currentTime <= windowEnd;
@@ -717,14 +969,20 @@ export function VideoPlayer({
           : Math.abs(currentTime - c.timestamp) <= 1.5);
       return isActive || isPlaybackActive || isPausedActive;
     });
-  }, [comments, currentFilter, currentTime, activeCommentId, isPlaying]);
+  }, [comments, currentFilter, currentTime, activeCommentId, isPlaying, theaterMode]);
 
-  // Live range end while the composer's range mode is on — the current playhead,
-  // as long as it's moved at least 0.5s away from the pin's start (server also enforces this)
-  const liveRangeEnd =
-    isRangeMode && activeDraftPin && Math.abs(currentTime - activeDraftPin.timestamp) >= 0.5
-      ? currentTime
-      : null;
+  // Live range end. In theater mode there's no separate "range mode" toggle and no pin/drawing required —
+  // `rangeStart` anchors the moment composing began (any comment, plain or pinned), and the end is dragged
+  // independently on its own mini-track (dragRangeEnd) rather than by scrubbing the video's own playhead.
+  // Outside theater mode the old explicit toggle (in the floating popup) still gates it.
+  const liveRangeEnd = theaterMode
+    ? rangeStart !== null
+      ? dragRangeEnd
+      : null
+    : isRangeMode && activeDraftPin
+    ? currentTime
+    : null;
+  const rangeStartTime = theaterMode ? rangeStart : activeDraftPin?.timestamp ?? null;
 
   // Find active comment details for the on-screen card popup
   const activeComment = useMemo(() => {
@@ -741,10 +999,14 @@ export function VideoPlayer({
   return (
     <div
       ref={containerRef}
-      className={`space-y-3 ${isFullscreen ? 'h-full w-full bg-zinc-950 flex flex-col justify-center p-3' : ''}`}
+      className={`${theaterMode ? 'h-full flex flex-col min-h-0' : 'space-y-3'} ${isFullscreen ? 'h-full w-full bg-zinc-950 flex flex-col justify-center p-3' : ''}`}
     >
       <div
-        className="relative flex flex-col bg-white dark:bg-zinc-950 rounded-2xl overflow-hidden border border-slate-200 dark:border-zinc-800/80 shadow-2xl group select-none"
+        className={
+          theaterMode
+            ? 'relative flex flex-col flex-1 min-h-0 bg-black overflow-hidden group select-none'
+            : 'relative flex flex-col bg-white dark:bg-zinc-950 rounded-2xl overflow-hidden border border-slate-200 dark:border-zinc-800/80 shadow-2xl group select-none'
+        }
       >
       {/* Video Viewport with Interactive Spatial Pin & Drawing Overlay */}
       <div
@@ -752,7 +1014,7 @@ export function VideoPlayer({
         onPointerDown={handleViewportPointerDown}
         onPointerMove={handleViewportPointerMove}
         onPointerUp={handleViewportPointerUp}
-        className={`relative aspect-video bg-black flex items-center justify-center overflow-hidden touch-none ${
+        className={`relative ${theaterMode ? 'flex-1 min-h-0' : 'aspect-video'} bg-black flex items-center justify-center overflow-hidden touch-none ${
           !isPlaying && activeTool
             ? 'cursor-crosshair'
             : 'cursor-pointer'
@@ -767,6 +1029,7 @@ export function VideoPlayer({
           onTimeUpdate={() => {
             if (videoRef.current && !isScrubbingRef.current) {
               setCurrentTime(videoRef.current.currentTime);
+              onTimeUpdate?.(videoRef.current.currentTime);
               clearBuffering();
             }
           }}
@@ -777,6 +1040,7 @@ export function VideoPlayer({
               videoRef.current.muted = isMuted;
               videoRef.current.playbackRate = playbackSpeed;
               clearBuffering();
+              recalcVideoRect();
             }
           }}
           onWaiting={() => triggerBuffering(250)}
@@ -791,6 +1055,10 @@ export function VideoPlayer({
           onPause={() => {
             clearBuffering();
             setIsPlaying(false);
+            if (videoRef.current) {
+              onTimeUpdate?.(videoRef.current.currentTime);
+              onPlaybackPause?.(videoRef.current.currentTime);
+            }
           }}
           onEnded={() => {
             clearBuffering();
@@ -798,6 +1066,17 @@ export function VideoPlayer({
           }}
         />
 
+        {/* Everything below is positioned relative to the video's own rendered pixels (not the full viewport),
+            so pins/drawings/popovers never land in the black letterbox/pillarbox bars of a mismatched-aspect video. */}
+        <div
+          className="absolute pointer-events-none"
+          style={{
+            left: videoRect?.left ?? 0,
+            top: videoRect?.top ?? 0,
+            width: videoRect?.width ?? '100%',
+            height: videoRect?.height ?? '100%',
+          }}
+        >
         {/* SVG Drawing Layer for Real-Time and Saved Drawings */}
         <svg
           viewBox="0 0 100 100"
@@ -950,8 +1229,9 @@ export function VideoPlayer({
           </div>
         )}
 
-        {/* Smart Clamped On-Screen Floating Composer for Draft Pin & Drawing */}
-        {activeDraftPin && (
+        {/* Smart Clamped On-Screen Floating Composer for Draft Pin & Drawing — in theater mode the comment
+            sidebar's own composer handles text entry instead, so this popup stays hidden there. */}
+        {activeDraftPin && !theaterMode && (
           <div
             style={getClampedPopoverStyle(activeDraftPin.x, activeDraftPin.y)}
             className="pin-interactive-element absolute z-50 animate-in zoom-in-95 duration-150 pointer-events-auto"
@@ -1077,11 +1357,40 @@ export function VideoPlayer({
           </div>
         )}
 
-        {/* Saved Visual Pins on Video Frame */}
+        {/* Saved Visual Pins on Video Frame — for a drawing, the stroke itself (SVG layer above) is the
+            marker; in theater mode we skip the author badge/callout entirely so nothing sits on top of it. */}
         {visibleComments.map((pin) => {
           if (typeof pin.x !== 'number' || typeof pin.y !== 'number') return null;
+          if (theaterMode && pin.drawingData) return null;
           const isActive = activeCommentId === pin._id;
           const authorInitial = (pin.userId?.name || pin.guestName || 'R')[0].toUpperCase();
+
+          if (theaterMode) {
+            // Just a small pin — no author badge, no callout bubble
+            return (
+              <div
+                key={pin._id}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  if (onSelectComment) onSelectComment(pin._id, pin.timestamp);
+                  setDismissedCalloutId(null);
+                }}
+                style={{ left: `${pin.x}%`, top: `${pin.y}%` }}
+                className={`pin-interactive-element absolute -translate-x-1/2 -translate-y-full z-30 cursor-pointer transition-transform ${
+                  isActive ? 'scale-125 z-40' : 'hover:scale-110'
+                }`}
+              >
+                <MapPin
+                  className={`w-6 h-6 drop-shadow-[0_2px_4px_rgba(0,0,0,0.8)] ${
+                    pin.resolved ? 'text-emerald-400' : isActive ? 'text-cyan-300' : 'text-teal-400'
+                  }`}
+                  fill="currentColor"
+                  strokeWidth={1.5}
+                  stroke="black"
+                />
+              </div>
+            );
+          }
 
           return (
             <div
@@ -1143,8 +1452,9 @@ export function VideoPlayer({
         })}
 
 
-        {/* Active Comment On-Screen Popover Card (Opened from Sidebar / Pin Click) */}
-        {activeComment && (activeComment.x !== undefined || activeComment.drawingData) && (
+        {/* Active Comment On-Screen Popover Card (Opened from Sidebar / Pin Click) — theater mode shows the
+            comment's details in the sidebar instead, so this on-video card stays hidden there. */}
+        {!theaterMode && activeComment && (activeComment.x !== undefined || activeComment.drawingData) && (
           <div
             style={getClampedPopoverStyle(activeComment.x || 50, activeComment.y || 50)}
             className="pin-interactive-element absolute z-50 animate-in zoom-in-95 duration-200 pointer-events-auto"
@@ -1234,11 +1544,15 @@ export function VideoPlayer({
             </div>
           </div>
         )}
+        </div>
       </div>
 
       {/* Control Bar & Timeline */}
-      <div className="bg-white dark:bg-zinc-950/95 border-t border-slate-200 dark:border-zinc-800/80 p-3.5 space-y-3">
-        {/* Interactive Timeline Track with Hold & Slide Scrubber */}
+      <div className={`shrink-0 bg-white dark:bg-zinc-950/95 border-t border-slate-200 dark:border-zinc-800/80 p-2 sm:p-3.5 space-y-1.5 sm:space-y-3`}>
+        {/* Interactive Timeline Track with Hold & Slide Scrubber. Wrapped in a plain (non-group) relative
+            container so the range handles below can be absolutely positioned — never adding real layout
+            height, so the video area doesn't shrink/grow every time they show or hide on pause/play. */}
+        <div className="relative">
         <div
           ref={timelineRef}
           onPointerDown={handleTimelinePointerDown}
@@ -1261,13 +1575,13 @@ export function VideoPlayer({
               style={{ width: `${progressPercent}%` }}
             />
 
-            {/* Range Selection Highlight (from the composer's Start → live playhead) */}
-            {activeDraftPin && liveRangeEnd !== null && duration > 0 && (
+            {/* Range Selection Highlight (from the anchor point → live playhead) — theater mode hides it while playing */}
+            {(!theaterMode || !isPlaying) && rangeStartTime !== null && liveRangeEnd !== null && duration > 0 && (
               <div
                 className="absolute top-0 h-full bg-brand-400/40 border-x-2 border-brand-400 dark:bg-teal-400/40 dark:border-teal-400"
                 style={{
-                  left: `${(Math.min(activeDraftPin.timestamp, liveRangeEnd) / duration) * 100}%`,
-                  width: `${(Math.abs(liveRangeEnd - activeDraftPin.timestamp) / duration) * 100}%`,
+                  left: `${(Math.min(rangeStartTime, liveRangeEnd) / duration) * 100}%`,
+                  width: `${(Math.abs(liveRangeEnd - rangeStartTime) / duration) * 100}%`,
                 }}
               />
             )}
@@ -1298,8 +1612,10 @@ export function VideoPlayer({
             style={{ left: `${progressPercent}%` }}
           />
 
-          {/* Comment Markers on Timeline */}
-          {duration > 0 &&
+          {/* Comment Markers on Timeline (non-theater only — theater's markers live in their own row below,
+              outside this group/timeline element, so hovering them can't trigger the track's own hover styles) */}
+          {!theaterMode &&
+            duration > 0 &&
             filteredComments.map((comment) => {
               const markerPos = (comment.timestamp / duration) * 100;
               const isActive = activeCommentId === comment._id;
@@ -1363,41 +1679,151 @@ export function VideoPlayer({
           )}
         </div>
 
+        {/* Range handles — no separate track bar, just two small thin marks a few px below the main timeline.
+            Start is fixed; End is dragged directly (pointer capture on the handle itself), which moves the
+            range without ever seeking/scrubbing the video. A tiny built-in offset keeps both visible even
+            when they're at (or very near) the same instant, instead of one hiding behind the other. */}
+        {theaterMode && !isPlaying && rangeStartTime !== null && duration > 0 && (
+          <div className="absolute left-0 right-0 top-full mt-1 h-3 pointer-events-none">
+            {liveRangeEnd !== null && Math.abs(liveRangeEnd - rangeStartTime) > 0.05 && (
+              <div
+                className="absolute top-1/2 -translate-y-1/2 h-0.5 bg-amber-400/60"
+                style={{
+                  left: `${(Math.min(rangeStartTime, liveRangeEnd) / duration) * 100}%`,
+                  width: `${(Math.abs(liveRangeEnd - rangeStartTime) / duration) * 100}%`,
+                }}
+              />
+            )}
+
+            {/* Start handle — fixed at the anchor point */}
+            <div
+              className="absolute top-1/2 -translate-y-1/2 -translate-x-1/2 w-1 h-3.5 rounded-full bg-amber-400 shadow-[0_0_0_1.5px_rgba(0,0,0,0.9)]"
+              style={{ left: `calc(${(rangeStartTime / duration) * 100}% - 4px)` }}
+            />
+
+            {/* End handle — grab and drag to extend the range. Identical size/centering to the start handle,
+                just offset a few px so both stay visible instead of overlapping. */}
+            {liveRangeEnd !== null && (
+              <div
+                onPointerDown={handleRangeHandlePointerDown}
+                onPointerMove={handleRangeHandlePointerMove}
+                onPointerUp={handleRangeHandlePointerUp}
+                onPointerCancel={handleRangeHandlePointerUp}
+                className="absolute top-1/2 -translate-y-1/2 -translate-x-1/2 z-40 w-1 h-3.5 rounded-full bg-amber-400 shadow-[0_0_0_1.5px_rgba(0,0,0,0.9)] cursor-ew-resize touch-none pointer-events-auto"
+                style={{ left: `calc(${(liveRangeEnd / duration) * 100}% + 4px)` }}
+                title="Drag to set the range end"
+              />
+            )}
+          </div>
+        )}
+        </div>
+
+        {/* Theater-mode comment marker row — deliberately outside the timeline's own group/timeline element,
+            so hovering a marker never triggers the track's hover styles (thicken bar / grow scrubber). */}
+        {theaterMode && duration > 0 && (
+          <div className="relative h-5">
+            {filteredComments.map((comment) => {
+              const markerPos = (comment.timestamp / duration) * 100;
+              const isActive = activeCommentId === comment._id;
+              const isResolved = comment.resolved;
+              const hasDrawing = !!comment.drawingData;
+              const hasSpatialPin = comment.x !== undefined && comment.y !== undefined;
+              const authorKey = comment.userId?._id || comment.guestName || 'anon';
+              const authorName = comment.userId?.name || comment.guestName || 'Reviewer';
+              const authorInitial = authorName[0].toUpperCase();
+
+              return (
+                <div
+                  key={comment._id}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    if (onSelectComment) onSelectComment(comment._id, comment.timestamp);
+                    setDismissedCalloutId(null);
+                  }}
+                  className={`absolute top-0 -translate-x-1/2 z-20 group/tmarker transition-transform cursor-pointer ${
+                    isActive ? 'scale-110 z-30' : 'hover:scale-110'
+                  }`}
+                  style={{ left: `${markerPos}%` }}
+                >
+                  <div className="relative">
+                    <div
+                      className={`w-3.5 h-3.5 rounded-full border-2 shadow-md transition-all ${getAuthorMarkerColor(
+                        authorKey
+                      )} ${isActive ? 'ring-2 ring-white' : ''}`}
+                    />
+                    {isResolved && (
+                      <div className="absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 rounded-full bg-emerald-500 border border-zinc-950 flex items-center justify-center">
+                        <Check className="w-1.5 h-1.5 text-white" strokeWidth={4} />
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Rich hover preview card */}
+                  <div className="hidden group-hover/tmarker:block absolute bottom-full mb-2 left-1/2 -translate-x-1/2 w-64 p-3 rounded-2xl bg-zinc-900/98 border border-zinc-700 shadow-2xl backdrop-blur-xl text-xs z-50 pointer-events-none animate-in fade-in zoom-in-95 duration-100">
+                    <div className="flex items-center gap-2 mb-2">
+                      <div
+                        className={`w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-bold text-white shrink-0 ${getAuthorMarkerColor(
+                          authorKey
+                        )}`}
+                      >
+                        {authorInitial}
+                      </div>
+                      <span className="font-semibold text-zinc-100 truncate">{authorName}</span>
+                      <span className="text-zinc-500 text-[10px] shrink-0">{formatRelativeTime(comment.createdAt)}</span>
+                    </div>
+                    <div className="flex items-center gap-1.5 mb-1.5">
+                      <span className="px-1.5 py-0.5 rounded bg-amber-500/15 border border-amber-500/30 text-amber-400 font-mono text-[10px] font-semibold">
+                        {formatTimecode(comment.timestamp)}
+                      </span>
+                      {hasDrawing ? (
+                        <Pencil className="w-3 h-3 text-purple-400" />
+                      ) : hasSpatialPin ? (
+                        <MapPin className="w-3 h-3 text-teal-400" />
+                      ) : null}
+                    </div>
+                    <p className="text-zinc-300 line-clamp-3 leading-snug">{comment.text}</p>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
+
         {/* Lower Controller Bar */}
-        <div className="relative flex items-center justify-between gap-3 flex-wrap">
+        <div className="relative flex items-center justify-between gap-1.5 sm:gap-3">
           {/* Left Controls: Play, Step Frames, Timecode */}
-          <div className="flex items-center gap-2 sm:gap-3 shrink-0">
+          <div className="flex items-center gap-1 sm:gap-2 shrink-0">
             {/* Play / Pause */}
             <button
               onClick={togglePlay}
-              className="p-2 rounded-xl bg-brand-600 hover:bg-brand-500 dark:bg-teal-600 dark:hover:bg-teal-500 text-white shadow-md shadow-brand-600/20 dark:shadow-teal-600/20 transition-all shrink-0 cursor-pointer"
+              className="p-1.5 sm:p-2 rounded-xl bg-brand-600 hover:bg-brand-500 dark:bg-teal-600 dark:hover:bg-teal-500 text-white shadow-md shadow-brand-600/20 dark:shadow-teal-600/20 transition-all shrink-0 cursor-pointer"
               title={isPlaying ? 'Pause (Space)' : 'Play (Space)'}
             >
-              {isPlaying ? <Pause className="w-4 h-4 fill-white" /> : <Play className="w-4 h-4 fill-white" />}
+              {isPlaying ? <Pause className="w-3.5 sm:w-4 h-3.5 sm:h-4 fill-white" /> : <Play className="w-3.5 sm:w-4 h-3.5 sm:h-4 fill-white" />}
             </button>
 
             {/* Frame Step Back */}
             <button
               onClick={() => stepFrames(-1)}
-              className="p-1.5 rounded-lg text-slate-500 dark:text-zinc-400 hover:text-slate-800 dark:hover:text-zinc-200 hover:bg-slate-100 dark:hover:bg-zinc-800 transition-colors shrink-0 cursor-pointer"
+              className="p-1 sm:p-1.5 rounded-lg text-slate-500 dark:text-zinc-400 hover:text-slate-800 dark:hover:text-zinc-200 hover:bg-slate-100 dark:hover:bg-zinc-800 transition-colors shrink-0 cursor-pointer"
               title="Previous Frame (Left Arrow / J)"
             >
-              <ChevronLeft className="w-4 h-4" />
+              <ChevronLeft className="w-3.5 sm:w-4 h-3.5 sm:h-4" />
             </button>
 
             {/* Frame Step Forward */}
             <button
               onClick={() => stepFrames(1)}
-              className="p-1.5 rounded-lg text-slate-500 dark:text-zinc-400 hover:text-slate-800 dark:hover:text-zinc-200 hover:bg-slate-100 dark:hover:bg-zinc-800 transition-colors shrink-0 cursor-pointer"
+              className="p-1 sm:p-1.5 rounded-lg text-slate-500 dark:text-zinc-400 hover:text-slate-800 dark:hover:text-zinc-200 hover:bg-slate-100 dark:hover:bg-zinc-800 transition-colors shrink-0 cursor-pointer"
               title="Next Frame (Right Arrow / L)"
             >
-              <ChevronRight className="w-4 h-4" />
+              <ChevronRight className="w-3.5 sm:w-4 h-3.5 sm:h-4" />
             </button>
 
             {/* Timecode and Frame Number Display */}
             <button
               onClick={() => setShowSMPTE(!showSMPTE)}
-              className="flex items-center gap-1 px-2.5 py-1 rounded-lg bg-slate-100 dark:bg-zinc-900 border border-slate-200 dark:border-zinc-800 text-xs font-mono text-slate-700 dark:text-zinc-300 hover:border-slate-300 dark:hover:border-zinc-700 transition-colors shrink-0 cursor-pointer"
+              className="flex items-center gap-1 px-1.5 sm:px-2.5 py-0.5 sm:py-1 rounded-lg bg-slate-100 dark:bg-zinc-900 border border-slate-200 dark:border-zinc-800 text-[11px] sm:text-xs font-mono text-slate-700 dark:text-zinc-300 hover:border-slate-300 dark:hover:border-zinc-700 transition-colors shrink-0 cursor-pointer"
               title="Click to toggle SMPTE timecode / standard"
             >
               <span className="font-semibold text-brand-600 dark:text-teal-400">
@@ -1407,59 +1833,63 @@ export function VideoPlayer({
               <span className="text-slate-400 dark:text-zinc-500">
                 {showSMPTE ? formatSMPTETimecode(duration, fps) : formatDuration(duration)}
               </span>
-              <span className="text-[10px] text-slate-400 dark:text-zinc-500 ml-0.5">({currentFrame}f)</span>
+              <span className="hidden sm:inline text-[10px] text-slate-400 dark:text-zinc-500 ml-0.5">({currentFrame}f)</span>
             </button>
 
-            {/* Annotation Tools Toggle */}
-            <button
-              type="button"
-              onClick={() => setShowAnnotationTools((v) => !v)}
-              className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-semibold border transition-all shrink-0 cursor-pointer ${
-                showAnnotationTools || activeTool
-                  ? 'bg-brand-600 dark:bg-teal-600 border-brand-600 dark:border-teal-600 text-white shadow-md shadow-brand-600/30 dark:shadow-teal-600/30'
-                  : 'bg-slate-100 dark:bg-zinc-900 border-slate-200 dark:border-zinc-800 text-slate-600 dark:text-zinc-400 hover:text-slate-900 dark:hover:text-zinc-200'
-              }`}
-              title="Annotation tools — pin, draw, shapes (P/D/R/O/A)"
-            >
-              <Pencil className="w-3.5 h-3.5" />
-              <span className="hidden sm:inline">Annotate</span>
-            </button>
-          </div>
-
-          {/* Center 3-Way Annotation Filter Switch on Video Canvas */}
-          <div className="flex items-center bg-slate-100 dark:bg-zinc-900 p-1 rounded-xl border border-slate-200 dark:border-zinc-800 shrink-0 text-xs">
-            {(['all', 'active', 'resolved'] as const).map((mode) => (
+            {/* Annotation Tools Toggle — in theater mode the comment composer's own pen icon drives this instead */}
+            {!theaterMode && (
               <button
-                key={mode}
                 type="button"
-                onClick={() => handleFilterChange(mode)}
-                className={`px-2.5 py-0.5 rounded-lg text-[10px] font-medium transition-all cursor-pointer ${
-                  currentFilter === mode
-                    ? mode === 'resolved'
-                      ? 'bg-emerald-600 text-white shadow-sm font-semibold'
-                      : mode === 'active'
-                      ? 'bg-amber-600 text-white shadow-sm font-semibold'
-                      : 'bg-brand-600 dark:bg-teal-600 text-white shadow-sm font-semibold'
-                    : 'text-slate-500 dark:text-zinc-400 hover:text-slate-800 dark:hover:text-zinc-200'
+                onClick={() => setShowAnnotationTools((v) => !v)}
+                className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-semibold border transition-all shrink-0 cursor-pointer ${
+                  showAnnotationTools || activeTool
+                    ? 'bg-brand-600 dark:bg-teal-600 border-brand-600 dark:border-teal-600 text-white shadow-md shadow-brand-600/30 dark:shadow-teal-600/30'
+                    : 'bg-slate-100 dark:bg-zinc-900 border-slate-200 dark:border-zinc-800 text-slate-600 dark:text-zinc-400 hover:text-slate-900 dark:hover:text-zinc-200'
                 }`}
-                title={`Show ${
-                  mode === 'all'
-                    ? 'all annotations'
-                    : mode === 'active'
-                    ? 'unresolved annotations only'
-                    : 'resolved annotations only'
-                } on video`}
+                title="Annotation tools — pin, draw, shapes (P/D/R/O/A)"
               >
-                {mode === 'all' ? 'All' : mode === 'active' ? 'Unresolved' : 'Resolved'}
+                <Pencil className="w-3.5 h-3.5" />
+                <span className="hidden sm:inline">Annotate</span>
               </button>
-            ))}
+            )}
           </div>
+
+          {/* Center 3-Way Annotation Filter Switch on Video Canvas — in theater mode this lives only in the comment sidebar's own dropdown */}
+          {!theaterMode && (
+            <div className="flex items-center bg-slate-100 dark:bg-zinc-900 p-1 rounded-xl border border-slate-200 dark:border-zinc-800 shrink-0 text-xs">
+              {(['all', 'active', 'resolved'] as const).map((mode) => (
+                <button
+                  key={mode}
+                  type="button"
+                  onClick={() => handleFilterChange(mode)}
+                  className={`px-2.5 py-0.5 rounded-lg text-[10px] font-medium transition-all cursor-pointer ${
+                    currentFilter === mode
+                      ? mode === 'resolved'
+                        ? 'bg-emerald-600 text-white shadow-sm font-semibold'
+                        : mode === 'active'
+                        ? 'bg-amber-600 text-white shadow-sm font-semibold'
+                        : 'bg-brand-600 dark:bg-teal-600 text-white shadow-sm font-semibold'
+                      : 'text-slate-500 dark:text-zinc-400 hover:text-slate-800 dark:hover:text-zinc-200'
+                  }`}
+                  title={`Show ${
+                    mode === 'all'
+                      ? 'all annotations'
+                      : mode === 'active'
+                      ? 'unresolved annotations only'
+                      : 'resolved annotations only'
+                  } on video`}
+                >
+                  {mode === 'all' ? 'All' : mode === 'active' ? 'Unresolved' : 'Resolved'}
+                </button>
+              ))}
+            </div>
+          )}
 
           {/* Right Controls: Speed, Volume, Fullscreen */}
-          <div className="flex items-center gap-2 shrink-0">
+          <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
             {/* Speed Selector */}
             <div className="relative group/speed shrink-0">
-              <button className="px-2 py-1 rounded-lg bg-slate-100 dark:bg-zinc-900 border border-slate-200 dark:border-zinc-800 text-xs font-mono text-slate-500 dark:text-zinc-400 hover:text-slate-800 dark:hover:text-zinc-200 transition-colors cursor-pointer">
+              <button className="px-1.5 sm:px-2 py-0.5 sm:py-1 rounded-lg bg-slate-100 dark:bg-zinc-900 border border-slate-200 dark:border-zinc-800 text-[11px] sm:text-xs font-mono text-slate-500 dark:text-zinc-400 hover:text-slate-800 dark:hover:text-zinc-200 transition-colors cursor-pointer">
                 {playbackSpeed}x
               </button>
               <div className="hidden group-hover/speed:flex absolute bottom-full right-0 mb-1 flex-col bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-800 rounded-xl p-1 shadow-2xl z-50">
@@ -1481,7 +1911,7 @@ export function VideoPlayer({
             </div>
 
             {/* Volume */}
-            <div className="flex items-center gap-1.5 shrink-0">
+            <div className="hidden sm:flex items-center gap-1.5 shrink-0">
               <button
                 onClick={() => {
                   const nextMuted = !isMuted;
@@ -1515,10 +1945,10 @@ export function VideoPlayer({
             {/* Fullscreen */}
             <button
               onClick={toggleFullscreen}
-              className="p-1.5 text-slate-500 dark:text-zinc-400 hover:text-slate-800 dark:hover:text-zinc-200 rounded-lg hover:bg-slate-100 dark:hover:bg-zinc-800 transition-colors shrink-0 cursor-pointer"
+              className="p-1 sm:p-1.5 text-slate-500 dark:text-zinc-400 hover:text-slate-800 dark:hover:text-zinc-200 rounded-lg hover:bg-slate-100 dark:hover:bg-zinc-800 transition-colors shrink-0 cursor-pointer"
               title="Fullscreen (F)"
             >
-              {isFullscreen ? <Minimize2 className="w-4 h-4" /> : <Maximize2 className="w-4 h-4" />}
+              {isFullscreen ? <Minimize2 className="w-3.5 sm:w-4 h-3.5 sm:h-4" /> : <Maximize2 className="w-3.5 sm:w-4 h-3.5 sm:h-4" />}
             </button>
           </div>
 
@@ -1703,4 +2133,4 @@ export function VideoPlayer({
     </div>
     </div>
   );
-}
+});
