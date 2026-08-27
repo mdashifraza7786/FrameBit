@@ -5,9 +5,6 @@ import { getSessionUser } from '@/lib/auth';
 export async function GET(req: NextRequest) {
   try {
     const user = await getSessionUser(req);
-    if (!user) {
-      return NextResponse.json({ error: 'You must be logged in to connect Google Drive' }, { status: 401 });
-    }
 
     const clientId = process.env.GOOGLE_CLIENT_ID;
     const clientSecret = process.env.GOOGLE_CLIENT_SECRET;
@@ -24,13 +21,19 @@ export async function GET(req: NextRequest) {
 
     const oauth2Client = new google.auth.OAuth2(clientId, clientSecret, redirectUri);
 
-    const scopes = [
-      'https://www.googleapis.com/auth/drive.file',
-      'https://www.googleapis.com/auth/userinfo.email',
-      'https://www.googleapis.com/auth/userinfo.profile',
-    ];
+    // Logged-in user: also connect Google Drive. Anonymous visitor: Sign-in-with-Google only.
+    const scopes = user
+      ? [
+          'https://www.googleapis.com/auth/drive.file',
+          'https://www.googleapis.com/auth/userinfo.email',
+          'https://www.googleapis.com/auth/userinfo.profile',
+        ]
+      : [
+          'https://www.googleapis.com/auth/userinfo.email',
+          'https://www.googleapis.com/auth/userinfo.profile',
+        ];
 
-    const state = user._id.toString();
+    const state = user ? user._id.toString() : 'login';
 
     const authUrl = oauth2Client.generateAuthUrl({
       access_type: 'offline',

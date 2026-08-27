@@ -3,7 +3,7 @@ import { google } from 'googleapis';
 import { connectDB } from '@/lib/db';
 import { User } from '@/lib/models';
 import { encrypt } from '@/lib/crypto';
-import { getSessionUser } from '@/lib/auth';
+import { getSessionUser, signToken, setAuthCookie } from '@/lib/auth';
 
 export async function GET(req: NextRequest) {
   try {
@@ -16,23 +16,16 @@ export async function GET(req: NextRequest) {
 
     if (error) {
       console.error('Google OAuth callback error:', error);
-      return NextResponse.redirect(`${appUrl}/settings?error=${encodeURIComponent(error)}`);
+      const errRedirect = state === 'login' ? '/login' : '/settings';
+      return NextResponse.redirect(`${appUrl}${errRedirect}?error=${encodeURIComponent(error)}`);
     }
 
     if (!code) {
-      return NextResponse.redirect(`${appUrl}/settings?error=missing_code`);
+      const errRedirect = state === 'login' ? '/login' : '/settings';
+      return NextResponse.redirect(`${appUrl}${errRedirect}?error=missing_code`);
     }
 
     await connectDB();
-    let user = await getSessionUser(req);
-
-    if (!user && state) {
-      user = await User.findById(state);
-    }
-
-    if (!user) {
-      return NextResponse.redirect(`${appUrl}/login?error=session_expired`);
-    }
 
     const clientId = process.env.GOOGLE_CLIENT_ID;
     const clientSecret = process.env.GOOGLE_CLIENT_SECRET;
@@ -46,11 +39,57 @@ export async function GET(req: NextRequest) {
     // Get user's Google account info
     const oauth2 = google.oauth2({ version: 'v2', auth: oauth2Client });
     let googleAccountId: string | undefined;
+    let googleName: string | undefined;
     try {
       const userInfo = await oauth2.userinfo.get();
       googleAccountId = userInfo.data.email || undefined;
+      googleName = userInfo.data.name || undefined;
     } catch {
       // Non-fatal if userinfo fails
+    }
+
+    // ---- Sign in with Google (no existing session — login/register flow) ----
+    if (state === 'login') {
+      if (!googleAccountId) {
+        return NextResponse.redirect(`${appUrl}/login?error=google_email_missing`);
+      }
+
+      const email = googleAccountId.toLowerCase().trim();
+      let loginUser = await User.findOne({ email });
+
+      if (!loginUser) {
+        loginUser = await User.create({
+          name: googleName || email.split('@')[0],
+          email,
+          role: 'editor',
+          googleAccountId,
+        });
+      } else if (!loginUser.googleAccountId) {
+        loginUser.googleAccountId = googleAccountId;
+        await loginUser.save();
+      }
+
+      const jwt = signToken({
+        userId: loginUser._id.toString(),
+        email: loginUser.email,
+        role: loginUser.role,
+        name: loginUser.name,
+      });
+
+      const response = NextResponse.redirect(`${appUrl}/dashboard`);
+      setAuthCookie(response, jwt);
+      return response;
+    }
+
+    // ---- Connect Google Drive (existing session, from Settings) ----
+    let user = await getSessionUser(req);
+
+    if (!user && state) {
+      user = await User.findById(state);
+    }
+
+    if (!user) {
+      return NextResponse.redirect(`${appUrl}/login?error=session_expired`);
     }
 
     // Check or create root application folder: "FrameBit"
