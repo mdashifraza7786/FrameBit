@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { connectDB } from '@/lib/db';
-import { Project, VideoAsset, VideoVersion, Comment } from '@/lib/models';
+import { Project, VideoAsset, VideoVersion, Comment, User } from '@/lib/models';
 import { getSessionUser, verifyProjectAccess } from '@/lib/auth';
 import { getStorageProviderForUser } from '@/lib/storage';
 
@@ -23,6 +23,10 @@ export async function GET(
     await project.populate('ownerId', 'name email avatar');
     await project.populate('members.userId', 'name email avatar');
 
+    // Whether the project owner's Drive is connected — never expose the tokens, just the flag.
+    const ownerAuthDoc = await User.findById(project.ownerId._id).select('googleTokens');
+    const ownerDriveConnected = !!(ownerAuthDoc?.googleTokens?.accessToken || ownerAuthDoc?.googleTokens?.refreshToken);
+
     // Fetch video assets for this project
     const videoAssets = await VideoAsset.find({ projectId: project._id }).sort({ updatedAt: -1 });
 
@@ -35,6 +39,7 @@ export async function GET(
         driveFolderId: project.driveFolderId,
         members: project.members,
         userRole,
+        ownerDriveConnected,
         videoCount: videoAssets.length,
         createdAt: project.createdAt,
         updatedAt: project.updatedAt,
@@ -94,11 +99,12 @@ export async function DELETE(
 
     await connectDB();
 
-    // Clean up project Drive folder if available
+    // Clean up project Drive folder if available (skipped if Drive isn't connected — the DB records are
+    // still removed below either way, so a disconnected owner can still delete their own project).
     if (project.driveFolderId) {
       try {
         const storage = getStorageProviderForUser(user);
-        await storage.delete(project.driveFolderId);
+        await storage?.delete(project.driveFolderId);
       } catch (e) {
         console.warn('Could not delete Drive folder:', e);
       }

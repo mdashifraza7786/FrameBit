@@ -61,8 +61,8 @@ export async function GET(
           const owner = await User.findById(project.ownerId);
           if (owner) {
             const storage = getStorageProviderForUser(owner);
-            const meta = await storage.getMetadata(version.driveFileId);
-            if (meta.thumbnailUrl) {
+            const meta = await storage?.getMetadata(version.driveFileId);
+            if (meta?.thumbnailUrl) {
               // Cache on asset for next time
               asset.thumbnailUrl = meta.thumbnailUrl;
               await asset.save();

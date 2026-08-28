@@ -37,7 +37,7 @@ export async function POST(req: NextRequest) {
         email: user.email,
         role: user.role,
         avatar: user.avatar,
-        googleDriveConnected: !!user.googleTokens?.accessToken,
+        googleDriveConnected: !!(user.googleTokens?.accessToken || user.googleTokens?.refreshToken),
       },
     });
 

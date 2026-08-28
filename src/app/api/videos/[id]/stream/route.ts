@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { connectDB } from '@/lib/db';
 import { VideoAsset, VideoVersion, Project, User, ShareLink } from '@/lib/models';
 import { getSessionUser, verifyProjectAccess } from '@/lib/auth';
-import { getStorageProviderForUser } from '@/lib/storage';
+import { getStorageProviderForUser, driveNotConnectedMessage } from '@/lib/storage';
 import { Readable } from 'stream';
 
 export async function GET(
@@ -22,6 +22,7 @@ export async function GET(
     }
 
     let hasAccess = false;
+    let sessionUser = null;
     let project = await Project.findById(asset.projectId);
     if (!project) {
       return NextResponse.json({ error: 'Project not found' }, { status: 404 });
@@ -43,9 +44,9 @@ export async function GET(
 
     // 2. Check session user if not authorized by token
     if (!hasAccess) {
-      const user = await getSessionUser(req);
-      if (user) {
-        const check = await verifyProjectAccess(project._id.toString(), user._id.toString(), 'reviewer');
+      sessionUser = await getSessionUser(req);
+      if (sessionUser) {
+        const check = await verifyProjectAccess(project._id.toString(), sessionUser._id.toString(), 'reviewer');
         if (check.allowed) {
           hasAccess = true;
         }
@@ -70,6 +71,16 @@ export async function GET(
     // Get owner's storage credentials to stream the file
     const projectOwner = await User.findById(project.ownerId);
     const storage = getStorageProviderForUser(projectOwner);
+    if (!storage || !projectOwner) {
+      const requesterIsOwner = !!sessionUser && projectOwner?._id.toString() === sessionUser._id.toString();
+      return NextResponse.json(
+        {
+          error: driveNotConnectedMessage(projectOwner?.name || 'the project owner', requesterIsOwner),
+          code: 'drive_not_connected',
+        },
+        { status: 409 }
+      );
+    }
 
     const rangeHeader = req.headers.get('range') || undefined;
     const streamResult = await storage.getStream(version.driveFileId, rangeHeader);

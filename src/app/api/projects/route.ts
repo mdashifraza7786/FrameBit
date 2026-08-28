@@ -73,25 +73,27 @@ export async function POST(req: NextRequest) {
 
     await connectDB();
 
-    // Create Drive folder if user has Google Drive connected
-    let driveFolderId: string | undefined;
-    try {
-      const storage = getStorageProviderForUser(user);
-      let rootId = user.googleDriveRootFolderId;
-
-      // If user doesn't have root folder ID saved yet, find or create "FrameBit"
-      if (!rootId && 'findOrCreateFolder' in storage) {
-        const rootFolder = await (storage as any).findOrCreateFolder('FrameBit');
-        rootId = rootFolder.id;
-        user.googleDriveRootFolderId = rootId;
-        await user.save();
-      }
-
-      const folder = await storage.createFolder(name.trim(), rootId);
-      driveFolderId = folder.id;
-    } catch (err: any) {
-      console.warn('Storage folder creation warning (continuing with project):', err.message);
+    // Every project needs somewhere to actually store its videos — refuse to create one otherwise.
+    const storage = getStorageProviderForUser(user);
+    if (!storage) {
+      return NextResponse.json(
+        { error: 'Connect your Google Drive before creating a project — it\'s where all project videos are stored.' },
+        { status: 409 }
+      );
     }
+
+    let rootId = user.googleDriveRootFolderId;
+
+    // If user doesn't have root folder ID saved yet, find or create "FrameBit"
+    if (!rootId && 'findOrCreateFolder' in storage) {
+      const rootFolder = await (storage as any).findOrCreateFolder('FrameBit');
+      rootId = rootFolder.id;
+      user.googleDriveRootFolderId = rootId;
+      await user.save();
+    }
+
+    const folder = await storage.createFolder(name.trim(), rootId);
+    const driveFolderId = folder.id;
 
     const project = await Project.create({
       name: name.trim(),

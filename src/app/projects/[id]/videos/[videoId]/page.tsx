@@ -12,6 +12,7 @@ import {
   PanelRightClose,
   PanelRightOpen,
   SlidersHorizontal,
+  Lock,
 } from 'lucide-react';
 import { VideoPlayer, type ActiveTool, type VideoPlayerHandle } from '@/components/video/VideoPlayer';
 import { CommentSidebar } from '@/components/video/CommentSidebar';
@@ -46,6 +47,7 @@ function VideoReviewContent({
   const [activeCommentId, setActiveCommentId] = useState<string | null>(null);
   const [seekToTime, setSeekToTime] = useState<number | null>(null);
   const [userRole, setUserRole] = useState<string>('reviewer');
+  const [ownerDriveConnected, setOwnerDriveConnected] = useState(true);
   const [loading, setLoading] = useState(true);
 
   const [uploadVersionModalOpen, setUploadVersionModalOpen] = useState(false);
@@ -85,6 +87,7 @@ function VideoReviewContent({
         setVersions(data.versions || []);
         setComments(data.comments || []);
         setUserRole(data.userRole || 'reviewer');
+        setOwnerDriveConnected(data.ownerDriveConnected !== false);
 
         // Automatically default to the highest / latest available version number
         const versionList: VideoVersionData[] = data.versions || [];
@@ -298,7 +301,7 @@ function VideoReviewContent({
     }
   };
 
-  const canUpload = userRole === 'owner' || userRole === 'editor';
+  const canUpload = ownerDriveConnected && (userRole === 'owner' || userRole === 'editor');
   const canChangeStatus = userRole === 'owner' || userRole === 'reviewer';
   const canShare = userRole === 'owner' || userRole === 'reviewer';
   const streamSrc = `/api/videos/${videoId}/stream?version=${currentVersionNumber}`;
@@ -400,6 +403,35 @@ function VideoReviewContent({
       <div className="flex-1 min-h-0 flex flex-col md:flex-row overflow-hidden">
         {/* Video Stage: Fixed height ratio on mobile so it never jumps or gets pushed off-screen when typing comments */}
         <div className="w-full md:flex-1 md:min-w-0 md:min-h-0 h-[38vh] sm:h-[44vh] md:h-full shrink-0 md:shrink flex flex-col bg-black overflow-hidden relative z-10">
+          {!ownerDriveConnected ? (
+            <div className="flex-1 flex flex-col items-center justify-center gap-3 p-6 text-center">
+              <div className="w-12 h-12 rounded-2xl bg-zinc-900 border border-zinc-800 flex items-center justify-center">
+                <Lock className="w-5 h-5 text-zinc-500" />
+              </div>
+              {userRole === 'owner' ? (
+                <>
+                  <p className="text-sm font-semibold text-zinc-200">Google Drive not connected</p>
+                  <p className="text-xs text-zinc-500 max-w-xs">
+                    Connect your Google Drive to view or upload videos — it&apos;s where this project&apos;s videos are stored.
+                  </p>
+                  <Link
+                    href="/settings"
+                    className="mt-1 px-4 py-2 rounded-xl bg-teal-600 hover:bg-teal-500 text-white text-xs font-semibold transition-colors"
+                  >
+                    Connect Google Drive
+                  </Link>
+                </>
+              ) : (
+                <>
+                  <p className="text-sm font-semibold text-zinc-200">Video unavailable</p>
+                  <p className="text-xs text-zinc-500 max-w-xs">
+                    Contact the project owner ({project?.owner?.name || 'the owner'}) to connect their Google Drive
+                    account to access this project.
+                  </p>
+                </>
+              )}
+            </div>
+          ) : (
           <VideoPlayer
             ref={videoPlayerRef}
             theaterMode
@@ -434,6 +466,7 @@ function VideoReviewContent({
             rangeStart={rangeStart}
             onRangeEndChange={setRangeEnd}
           />
+          )}
         </div>
 
         {/* Comments Panel */}

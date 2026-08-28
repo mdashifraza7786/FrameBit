@@ -116,7 +116,14 @@ function SettingsContent() {
   };
 
   const handleDisconnect = async () => {
-    if (!confirm('Are you sure you want to disconnect your Google Drive account?')) return;
+    if (
+      !confirm(
+        "Disconnect Google Drive?\n\nAll videos in your projects will become unplayable for you and everyone else " +
+          "on those projects until you reconnect — uploading new videos will also be blocked. Comments, project " +
+          "info, and everything else keep working fine.\n\nThis does not delete anything from your Drive."
+      )
+    )
+      return;
     try {
       await disconnectDrive();
       await fetchDriveStatus();

@@ -19,6 +19,7 @@ import {
   ListChecks,
   CheckSquare,
   Square,
+  AlertTriangle,
 } from 'lucide-react';
 import { StatusBadge } from '@/components/video/StatusBadge';
 import { UploadModal } from '@/components/video/UploadModal';
@@ -198,7 +199,8 @@ export default function ProjectDetailPage({ params }: { params: Promise<{ id: st
   };
 
   const isOwner = project?.userRole === 'owner';
-  const canUpload = ['owner', 'editor'].includes(project?.userRole || '');
+  const ownerDriveConnected = project?.ownerDriveConnected !== false;
+  const canUpload = ['owner', 'editor'].includes(project?.userRole || '') && ownerDriveConnected;
   const canChangeStatus = ['owner', 'reviewer'].includes(project?.userRole || '');
 
   if (loading) {
@@ -279,6 +281,30 @@ export default function ProjectDetailPage({ params }: { params: Promise<{ id: st
             )}
           </div>
         </div>
+
+        {/* Google Drive Disconnected Warning */}
+        {!ownerDriveConnected && (
+          <div className="flex items-start gap-3 p-4 rounded-2xl bg-amber-50 dark:bg-amber-950/30 border border-amber-300/60 dark:border-amber-800/60">
+            <AlertTriangle className="w-4 h-4 text-amber-600 dark:text-amber-400 shrink-0 mt-0.5" />
+            <div className="text-xs text-amber-800 dark:text-amber-300">
+              {isOwner ? (
+                <>
+                  <span className="font-semibold">Google Drive is not connected.</span> Uploads are disabled and
+                  existing videos won&apos;t play until you{' '}
+                  <Link href="/settings" className="underline hover:no-underline font-semibold">
+                    reconnect your Google Drive
+                  </Link>
+                  .
+                </>
+              ) : (
+                <>
+                  <span className="font-semibold">Google Drive is not connected.</span> Videos in this project are
+                  unavailable until {project?.owner?.name || 'the project owner'} reconnects their Google Drive.
+                </>
+              )}
+            </div>
+          </div>
+        )}
 
         {/* Video Assets Gallery */}
         <div className="space-y-4">

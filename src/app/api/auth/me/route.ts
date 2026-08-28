@@ -16,7 +16,7 @@ export async function GET(req: NextRequest) {
         role: user.role,
         avatar: user.avatar,
         googleAccountId: user.googleAccountId,
-        googleDriveConnected: !!user.googleTokens?.accessToken,
+        googleDriveConnected: !!(user.googleTokens?.accessToken || user.googleTokens?.refreshToken),
         googleDriveRootFolderId: user.googleDriveRootFolderId,
         createdAt: user.createdAt,
       },
@@ -48,7 +48,7 @@ export async function PATCH(req: NextRequest) {
         email: user.email,
         role: user.role,
         avatar: user.avatar,
-        googleDriveConnected: !!user.googleTokens?.accessToken,
+        googleDriveConnected: !!(user.googleTokens?.accessToken || user.googleTokens?.refreshToken),
       },
     });
   } catch (error: any) {

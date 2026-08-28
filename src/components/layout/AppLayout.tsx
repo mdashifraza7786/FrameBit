@@ -41,6 +41,14 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
     return null;
   }
 
+  // Every real signup is an 'owner' (demo editor/reviewer accounts are exempt — they never own projects,
+  // so their own Drive is never used for storage). An owner without Drive connected can't create or store
+  // anything yet, so send them to connect it before they can use the rest of the app.
+  if (user?.role === 'owner' && !user.googleDriveConnected && !pathname.startsWith('/connect-drive')) {
+    router.push('/connect-drive');
+    return null;
+  }
+
   const navItems = [
     { label: 'Dashboard', href: '/dashboard', icon: LayoutDashboard },
     { label: 'Projects', href: '/projects', icon: FolderKanban },

@@ -37,6 +37,8 @@ export interface ProjectData {
   userRole?: UserRole;
   videoCount?: number;
   membersCount?: number;
+  /** Whether the project owner's Google Drive is connected — uploads/streaming for this project need it. */
+  ownerDriveConnected?: boolean;
   createdAt: string;
   updatedAt: string;
 }

@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { connectDB } from '@/lib/db';
-import { VideoAsset, VideoVersion, Comment, Project, Notification } from '@/lib/models';
+import { VideoAsset, VideoVersion, Comment, Project, Notification, User } from '@/lib/models';
 import { getSessionUser, verifyProjectAccess } from '@/lib/auth';
 import { emitRealtimeEvent } from '@/lib/events';
 
@@ -34,6 +34,11 @@ export async function GET(
       }
     }
 
+    // Whether the project owner's Drive is connected — never expose the tokens themselves, just the flag,
+    // so the client can show a "connect Drive" locked state instead of a broken video player.
+    const ownerAuthDoc = await User.findById(project.ownerId._id).select('googleTokens');
+    const ownerDriveConnected = !!(ownerAuthDoc?.googleTokens?.accessToken || ownerAuthDoc?.googleTokens?.refreshToken);
+
     // Fetch all versions
     const versions = await VideoVersion.find({ assetId: asset._id })
       .populate('uploadedBy', 'name email avatar')
@@ -48,6 +53,7 @@ export async function GET(
     return NextResponse.json({
       asset,
       project,
+      ownerDriveConnected,
       versions,
       comments,
       userRole,
@@ -241,7 +247,7 @@ export async function DELETE(
       // 1. Delete file from Google Drive
       if (targetVersion.driveFileId) {
         try {
-          const success = await storage.delete(targetVersion.driveFileId);
+          const success = await storage?.delete(targetVersion.driveFileId);
           console.log(`Version v${targetVersionNumber} file (${targetVersion.driveFileId}) deletion status:`, success);
         } catch (driveErr) {
           console.warn(`Could not delete Drive file ${targetVersion.driveFileId}:`, driveErr);
@@ -318,7 +324,7 @@ export async function DELETE(
     for (const ver of allVersions) {
       if (ver.driveFileId) {
         try {
-          await storage.delete(ver.driveFileId);
+          await storage?.delete(ver.driveFileId);
         } catch (driveErr) {
           console.warn(`Could not delete Drive file ${ver.driveFileId}:`, driveErr);
         }

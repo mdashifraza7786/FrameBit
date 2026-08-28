@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { connectDB } from '@/lib/db';
 import { User, Project, VideoAsset, VideoVersion, Notification } from '@/lib/models';
 import { getSessionUser, verifyProjectAccess } from '@/lib/auth';
-import { getStorageProviderForUser } from '@/lib/storage';
+import { getStorageProviderForUser, driveNotConnectedMessage } from '@/lib/storage';
 import { emitRealtimeEvent } from '@/lib/events';
 import { Readable } from 'stream';
 
@@ -40,6 +40,12 @@ export async function POST(
       return NextResponse.json({ error: 'Project owner account not found' }, { status: 404 });
     }
     const storage = getStorageProviderForUser(projectOwner);
+    if (!storage) {
+      return NextResponse.json(
+        { error: driveNotConnectedMessage(projectOwner.name, projectOwner._id.toString() === user._id.toString()) },
+        { status: 409 }
+      );
+    }
 
     // Convert Web File stream to Node Readable stream
     const arrayBuffer = await file.arrayBuffer();

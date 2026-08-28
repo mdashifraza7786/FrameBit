@@ -8,7 +8,7 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    const isConnected = !!(user.googleTokens && user.googleTokens.accessToken);
+    const isConnected = !!(user.googleTokens?.accessToken || user.googleTokens?.refreshToken);
     let rootFolderId = user.googleDriveRootFolderId || null;
 
     // If connected but rootFolderId is missing, find or create FrameBit folder
@@ -16,7 +16,7 @@ export async function GET(req: NextRequest) {
       try {
         const { getStorageProviderForUser } = await import('@/lib/storage');
         const storage = getStorageProviderForUser(user);
-        if ('findOrCreateFolder' in storage) {
+        if (storage && 'findOrCreateFolder' in storage) {
           const rootFolder = await (storage as any).findOrCreateFolder('FrameBit');
           rootFolderId = rootFolder.id;
           user.googleDriveRootFolderId = rootFolder.id || undefined;

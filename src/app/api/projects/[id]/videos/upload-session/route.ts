@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { connectDB } from '@/lib/db';
 import { User } from '@/lib/models';
 import { getSessionUser, verifyProjectAccess } from '@/lib/auth';
-import { getStorageProviderForUser } from '@/lib/storage';
+import { getStorageProviderForUser, driveNotConnectedMessage } from '@/lib/storage';
 
 export async function POST(
   req: NextRequest,
@@ -32,6 +32,12 @@ export async function POST(
       return NextResponse.json({ error: 'Project owner account not found' }, { status: 404 });
     }
     const storage = getStorageProviderForUser(projectOwner);
+    if (!storage) {
+      return NextResponse.json(
+        { error: driveNotConnectedMessage(projectOwner.name, projectOwner._id.toString() === user._id.toString()) },
+        { status: 409 }
+      );
+    }
 
     const origin = req.headers.get('origin') || req.nextUrl.origin || 'http://localhost:3000';
 

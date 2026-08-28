@@ -73,7 +73,7 @@ export async function POST(
     try {
       const projectOwner = await User.findById(project.ownerId);
       const storage = getStorageProviderForUser(projectOwner);
-      if (storage.updateFileName && !driveFileId.startsWith('drive_')) {
+      if (storage?.updateFileName && !driveFileId.startsWith('drive_')) {
         await storage.updateFileName(driveFileId, targetDriveFilename);
       }
     } catch (renameErr) {
