@@ -444,6 +444,9 @@ export const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(funct
   const [dismissedCalloutId, setDismissedCalloutId] = useState<string | null>(null);
 
   const bufferTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const retryCountRef = useRef(0);
+  const isRecoveringRef = useRef(false);
+  const stallTimerRef = useRef<NodeJS.Timeout | null>(null);
 
   const triggerBuffering = useCallback((delay = 200) => {
     if (bufferTimerRef.current) clearTimeout(bufferTimerRef.current);
@@ -457,8 +460,54 @@ export const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(funct
       clearTimeout(bufferTimerRef.current);
       bufferTimerRef.current = null;
     }
+    if (stallTimerRef.current) {
+      clearTimeout(stallTimerRef.current);
+      stallTimerRef.current = null;
+    }
     setIsBuffering(false);
   }, []);
+
+  // Seamless auto-recovery handler when stream stalls or errors out from Google Drive drops
+  const handleStreamRecovery = useCallback(() => {
+    if (!videoRef.current || isRecoveringRef.current) return;
+    isRecoveringRef.current = true;
+    triggerBuffering(0);
+
+    const vid = videoRef.current;
+    const savedTime = vid.currentTime || 0;
+    const wasPlaying = !vid.paused;
+
+    console.warn(`[VideoPlayer] Auto-recovering stalled video stream at ${savedTime.toFixed(2)}s...`);
+
+    // Reload stream without requiring a full page refresh
+    vid.load();
+
+    const onCanPlayResume = () => {
+      if (!videoRef.current) return;
+      videoRef.current.removeEventListener('canplay', onCanPlayResume);
+      try {
+        videoRef.current.currentTime = savedTime;
+        if (wasPlaying) {
+          videoRef.current.play().catch(() => {});
+        }
+      } catch (err) {
+        console.warn('Error during stream auto-recovery resume:', err);
+      } finally {
+        clearBuffering();
+        isRecoveringRef.current = false;
+      }
+    };
+
+    vid.addEventListener('canplay', onCanPlayResume, { once: true });
+
+    // Safety timeout in case canplay event is delayed
+    setTimeout(() => {
+      if (isRecoveringRef.current) {
+        isRecoveringRef.current = false;
+        clearBuffering();
+      }
+    }, 4000);
+  }, [triggerBuffering, clearBuffering]);
 
   // Safe play helper
   const safePlay = useCallback(() => {
@@ -543,6 +592,7 @@ export const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(funct
   useEffect(() => {
     return () => {
       if (bufferTimerRef.current) clearTimeout(bufferTimerRef.current);
+      if (stallTimerRef.current) clearTimeout(stallTimerRef.current);
       if (videoRef.current) {
         videoRef.current.pause();
         videoRef.current.removeAttribute('src');
@@ -550,26 +600,6 @@ export const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(funct
       }
     };
   }, []);
-
-  // High-precision 60fps time tracking during playback
-  useEffect(() => {
-    let animationFrameId: number;
-
-    const updateLoop = () => {
-      if (videoRef.current && !videoRef.current.paused && !isScrubbingRef.current) {
-        setCurrentTime(videoRef.current.currentTime);
-      }
-      animationFrameId = requestAnimationFrame(updateLoop);
-    };
-
-    if (isPlaying) {
-      animationFrameId = requestAnimationFrame(updateLoop);
-    }
-
-    return () => {
-      if (animationFrameId) cancelAnimationFrame(animationFrameId);
-    };
-  }, [isPlaying]);
 
   // Sync seekToTime from props (e.g. clicked from sidebar)
   useEffect(() => {
@@ -936,8 +966,7 @@ export const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(funct
     });
   }, [comments, currentFilter]);
 
-  // Spatial pin / drawing comments visible near current timestamp (during playback: 3.0s window; paused: 3.0s window) or active comment.
-  // In theater mode this auto-reveal is dropped entirely — a pin/drawing only shows once its marker or comment is clicked (toggles on/off).
+  // Spatial pin / drawing comments visible near current timestamp or active comment.
   const visibleComments = useMemo(() => {
     return comments.filter((c) => {
       if (c.parentCommentId) return false;
@@ -948,15 +977,26 @@ export const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(funct
 
       const isActive = activeCommentId === c._id;
       if (theaterMode) {
-        // Toggled on via marker/comment click, but only actually rendered right at its own timestamp
-        // (a tiny epsilon to absorb seek/frame precision) — so it never stays stuck on screen once
-        // playback moves past that exact instant. Scrubbing back onto it brings it back automatically.
-        if (!isActive) return false;
-        const EPSILON = 0.15;
-        if (c.timestampEnd && c.timestampEnd > c.timestamp) {
-          return currentTime >= c.timestamp - EPSILON && currentTime <= c.timestampEnd + EPSILON;
+        if (isActive) {
+          // If the user actively clicked this comment from sidebar or timeline,
+          // keep it rendered on screen while paused or within its range window so keyframe seek offsets never hide it.
+          if (!isPlaying) return true;
+          const EPSILON = 1.0;
+          if (c.timestampEnd && c.timestampEnd > c.timestamp) {
+            return currentTime >= c.timestamp - EPSILON && currentTime <= c.timestampEnd + EPSILON;
+          }
+          return Math.abs(currentTime - c.timestamp) <= EPSILON;
         }
-        return Math.abs(currentTime - c.timestamp) <= EPSILON;
+
+        // Auto-reveal when scrubbing or playing near the annotation
+        const windowEnd = c.timestampEnd && c.timestampEnd > c.timestamp ? c.timestampEnd : c.timestamp + 2.0;
+        const isPlaybackActive = isPlaying && currentTime >= c.timestamp - 0.3 && currentTime <= windowEnd;
+        const isPausedActive =
+          !isPlaying &&
+          (c.timestampEnd && c.timestampEnd > c.timestamp
+            ? currentTime >= c.timestamp - 1.2 && currentTime <= c.timestampEnd + 1.2
+            : Math.abs(currentTime - c.timestamp) <= 1.2);
+        return isPlaybackActive || isPausedActive;
       }
 
       // Range comments stay visible for their full timestamp -> timestampEnd span
@@ -1031,6 +1071,10 @@ export const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(funct
               setCurrentTime(videoRef.current.currentTime);
               onTimeUpdate?.(videoRef.current.currentTime);
               clearBuffering();
+              if (stallTimerRef.current) {
+                clearTimeout(stallTimerRef.current);
+                stallTimerRef.current = null;
+              }
             }
           }}
           onLoadedMetadata={() => {
@@ -1043,7 +1087,31 @@ export const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(funct
               recalcVideoRect();
             }
           }}
-          onWaiting={() => triggerBuffering(250)}
+          onError={(e) => {
+            console.warn('[VideoPlayer] Video stream error event caught, auto-recovering...', e);
+            if (retryCountRef.current < 4) {
+              retryCountRef.current += 1;
+              handleStreamRecovery();
+            }
+          }}
+          onStalled={() => {
+            triggerBuffering(300);
+            if (stallTimerRef.current) clearTimeout(stallTimerRef.current);
+            stallTimerRef.current = setTimeout(() => {
+              if (videoRef.current && !videoRef.current.paused && isPlaying) {
+                handleStreamRecovery();
+              }
+            }, 3500);
+          }}
+          onWaiting={() => {
+            triggerBuffering(200);
+            if (stallTimerRef.current) clearTimeout(stallTimerRef.current);
+            stallTimerRef.current = setTimeout(() => {
+              if (videoRef.current && isPlaying) {
+                handleStreamRecovery();
+              }
+            }, 3500);
+          }}
           onSeeking={() => triggerBuffering(200)}
           onSeeked={() => clearBuffering()}
           onCanPlay={() => clearBuffering()}
@@ -1051,10 +1119,18 @@ export const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(funct
           onPlaying={() => {
             clearBuffering();
             setIsPlaying(true);
+            if (stallTimerRef.current) {
+              clearTimeout(stallTimerRef.current);
+              stallTimerRef.current = null;
+            }
           }}
           onPause={() => {
             clearBuffering();
             setIsPlaying(false);
+            if (stallTimerRef.current) {
+              clearTimeout(stallTimerRef.current);
+              stallTimerRef.current = null;
+            }
             if (videoRef.current) {
               onTimeUpdate?.(videoRef.current.currentTime);
               onPlaybackPause?.(videoRef.current.currentTime);

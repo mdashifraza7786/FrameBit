@@ -35,6 +35,7 @@ const NotificationSchema = new Schema<INotification>(
         'status_changed',
         'version_uploaded',
         'member_added',
+        'mention',
       ],
       required: true,
     },

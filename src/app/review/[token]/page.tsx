@@ -30,11 +30,22 @@ export default function GuestReviewPage({
   const [error, setError] = useState('');
 
   const fetchReviewData = async () => {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 12000); // 12s timeout
+
     try {
-      const res = await fetch(`/api/review/${token}`);
+      setLoading(true);
+      setError('');
+      const res = await fetch(`/api/review/${token}`, { signal: controller.signal });
+      clearTimeout(timeoutId);
+
       if (!res.ok) {
-        const err = await res.json();
-        setError(err.error || 'Invalid or expired review link');
+        let errMsg = 'Invalid or expired review link';
+        try {
+          const err = await res.json();
+          errMsg = err.error || errMsg;
+        } catch {}
+        setError(errMsg);
         return;
       }
 
@@ -51,8 +62,13 @@ export default function GuestReviewPage({
           : data.asset?.currentVersionNumber || 1;
       setCurrentVersionNumber(latestVer);
     } catch (err: any) {
-      setError(err.message || 'Failed to load video review');
+      if (err.name === 'AbortError') {
+        setError('Loading took too long. Please check your internet connection and retry.');
+      } else {
+        setError(err.message || 'Failed to load video review');
+      }
     } finally {
+      clearTimeout(timeoutId);
       setLoading(false);
     }
   };
@@ -64,27 +80,38 @@ export default function GuestReviewPage({
   // Real-time EventSource listener
   useEffect(() => {
     if (!asset?._id) return;
-    const es = new EventSource('/api/realtime');
+    const es = new EventSource(`/api/realtime?channel=asset:${asset._id}`);
 
     es.onmessage = (event) => {
       try {
         const payload = JSON.parse(event.data);
-        if (payload.type === 'comment_added' && payload.data?.assetId === asset._id) {
+        if (
+          (payload.type === 'comment:created' || payload.type === 'comment_added') &&
+          payload.data?.assetId === asset._id
+        ) {
           setComments((prev) => {
             if (prev.some((c) => c._id === payload.data._id)) return prev;
             return [...prev, payload.data];
           });
-        } else if (payload.type === 'comment_updated' && payload.data?.assetId === asset._id) {
+        } else if (
+          (payload.type === 'comment:updated' || payload.type === 'comment:resolved' || payload.type === 'comment_updated') &&
+          payload.data?.assetId === asset._id
+        ) {
           setComments((prev) =>
             prev.map((c) => (c._id === payload.data._id ? { ...c, ...payload.data } : c))
           );
-        } else if (payload.type === 'comment_deleted') {
-          setComments((prev) => prev.filter((c) => c._id !== payload.data.commentId));
-        } else if (payload.type === 'status_changed' && payload.data?.assetId === asset._id) {
+        } else if (payload.type === 'comment:deleted' || payload.type === 'comment_deleted') {
+          setComments((prev) => prev.filter((c) => c._id !== payload.data.commentId && c.parentCommentId !== payload.data.commentId));
+        } else if (
+          (payload.type === 'status:changed' || payload.type === 'status_changed') &&
+          (payload.data?.assetId === asset._id || payload.assetId === asset._id)
+        ) {
           setAsset((prev) => (prev ? { ...prev, status: payload.data.status } : null));
+        } else if (payload.type === 'version:created') {
+          fetchReviewData();
         }
-      } catch (e) {
-        console.error('Error handling SSE event:', e);
+      } catch {
+        // SSE heartbeat
       }
     };
 
@@ -179,6 +206,12 @@ export default function GuestReviewPage({
           <Lock className="w-12 h-12 text-rose-500 mx-auto" />
           <h2 className="text-lg font-bold text-slate-800 dark:text-zinc-100">Review Link Unavailable</h2>
           <p className="text-xs text-slate-500 dark:text-zinc-400">{error || 'This link has expired or is invalid.'}</p>
+          <button
+            onClick={fetchReviewData}
+            className="mt-2 px-4 py-2 bg-brand-600 hover:bg-brand-500 dark:bg-teal-600 dark:hover:bg-teal-500 text-white text-xs font-semibold rounded-xl shadow-lg transition-all"
+          >
+            Retry Loading
+          </button>
         </div>
       </div>
     );
@@ -278,6 +311,7 @@ export default function GuestReviewPage({
               onDeleteComment={async () => {}}
               onEditComment={async () => {}}
               allowGuestComments={shareLink?.allowComments ?? true}
+              onSelectVersion={setCurrentVersionNumber}
             />
           </div>
         </div>

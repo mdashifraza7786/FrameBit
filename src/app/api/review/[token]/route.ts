@@ -19,22 +19,23 @@ export async function GET(
       return NextResponse.json({ error: 'This review link has expired' }, { status: 410 });
     }
 
-    shareLink.viewsCount += 1;
-    await shareLink.save();
+    // Non-blocking view count increment
+    ShareLink.updateOne({ _id: shareLink._id }, { $inc: { viewsCount: 1 } }).catch(() => {});
 
-    const asset = await VideoAsset.findById(shareLink.assetId);
+    const asset = await VideoAsset.findById(shareLink.assetId).lean();
     if (!asset) {
       return NextResponse.json({ error: 'Video not found' }, { status: 404 });
     }
 
-    const project = await Project.findById(asset.projectId).select('name description');
-
-    const versions = await VideoVersion.find({ assetId: asset._id }).sort({ versionNumber: -1 });
-
-    const comments = await Comment.find({ assetId: asset._id })
-      .populate('userId', 'name email avatar role')
-      .populate('resolvedBy', 'name email')
-      .sort({ timestamp: 1, createdAt: 1 });
+    const [project, versions, comments] = await Promise.all([
+      Project.findById(asset.projectId).select('name description').lean(),
+      VideoVersion.find({ assetId: asset._id }).sort({ versionNumber: -1 }).lean(),
+      Comment.find({ assetId: asset._id })
+        .populate('userId', 'name email avatar role')
+        .populate('resolvedBy', 'name email')
+        .sort({ timestamp: 1, createdAt: 1 })
+        .lean(),
+    ]);
 
     return NextResponse.json({
       asset,

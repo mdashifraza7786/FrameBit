@@ -88,7 +88,7 @@ export async function GET(
     const responseHeaders: Record<string, string> = {
       'Content-Type': streamResult.contentType || 'video/mp4',
       'Accept-Ranges': 'bytes',
-      'Cache-Control': 'private, no-cache, no-transform',
+      'Cache-Control': 'private, max-age=3600, stale-while-revalidate=86400',
     };
 
     if (streamResult.contentLength > 0) {

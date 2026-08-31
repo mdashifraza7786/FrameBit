@@ -20,15 +20,16 @@ export async function GET(
       return NextResponse.json({ error: 'Project not found or access denied' }, { status: 403 });
     }
 
-    await project.populate('ownerId', 'name email avatar');
-    await project.populate('members.userId', 'name email avatar');
+    const [ownerAuthDoc, videoAssets] = await Promise.all([
+      User.findById(project.ownerId).select('googleTokens').lean(),
+      VideoAsset.find({ projectId: project._id }).sort({ updatedAt: -1 }).lean(),
+      project.populate('ownerId', 'name email avatar'),
+      project.populate('members.userId', 'name email avatar'),
+    ]);
 
-    // Whether the project owner's Drive is connected — never expose the tokens, just the flag.
-    const ownerAuthDoc = await User.findById(project.ownerId._id).select('googleTokens');
-    const ownerDriveConnected = !!(ownerAuthDoc?.googleTokens?.accessToken || ownerAuthDoc?.googleTokens?.refreshToken);
-
-    // Fetch video assets for this project
-    const videoAssets = await VideoAsset.find({ projectId: project._id }).sort({ updatedAt: -1 });
+    const ownerDriveConnected = !!(
+      ownerAuthDoc?.googleTokens?.accessToken || ownerAuthDoc?.googleTokens?.refreshToken
+    );
 
     return NextResponse.json({
       project: {

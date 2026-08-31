@@ -105,6 +105,21 @@ function VideoReviewContent({
         if (tParam) {
           setSeekToTime(parseFloat(tParam));
         }
+
+        // Check commentId in url (?commentId=xyz from notifications)
+        const commentIdParam = searchParams.get('commentId');
+        if (commentIdParam) {
+          setActiveCommentId(commentIdParam);
+          const targetComment = (data.comments || []).find((c: any) => c._id === commentIdParam);
+          if (targetComment) {
+            if (targetComment.versionNumber) {
+              setCurrentVersionNumber(targetComment.versionNumber);
+            }
+            if (typeof targetComment.timestamp === 'number') {
+              setSeekToTime(targetComment.timestamp);
+            }
+          }
+        }
       } else {
         router.push(`/projects/${projectId}`);
       }
@@ -302,8 +317,8 @@ function VideoReviewContent({
   };
 
   const canUpload = ownerDriveConnected && (userRole === 'owner' || userRole === 'editor');
-  const canChangeStatus = userRole === 'owner' || userRole === 'reviewer';
-  const canShare = userRole === 'owner' || userRole === 'reviewer';
+  const canChangeStatus = userRole === 'owner' || userRole === 'reviewer' || userRole === 'editor';
+  const canShare = userRole === 'owner' || userRole === 'reviewer' || userRole === 'editor';
   const streamSrc = `/api/videos/${videoId}/stream?version=${currentVersionNumber}`;
   const displayTitle =
     asset && currentVersionNumber >= 2 ? `${asset.name} - v${currentVersionNumber}` : asset?.name;
@@ -507,6 +522,7 @@ function VideoReviewContent({
                 setRangeStart(null);
                 setRangeEnd(null);
               }}
+              onSelectVersion={setCurrentVersionNumber}
             />
           </div>
         )}

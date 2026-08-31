@@ -52,9 +52,9 @@ export async function POST(
       return NextResponse.json({ error: 'Video asset not found' }, { status: 404 });
     }
 
-    const { allowed, userRole } = await verifyProjectAccess(asset.projectId.toString(), user._id.toString(), 'reviewer');
-    if (!allowed || (userRole !== 'owner' && userRole !== 'reviewer')) {
-      return NextResponse.json({ error: 'Only project owners and reviewers can create share links' }, { status: 403 });
+    const { allowed } = await verifyProjectAccess(asset.projectId.toString(), user._id.toString(), 'reviewer');
+    if (!allowed) {
+      return NextResponse.json({ error: 'Permission denied to create share links' }, { status: 403 });
     }
 
     const { allowComments = true, allowDownloads = false, expiresInDays } = await req.json();

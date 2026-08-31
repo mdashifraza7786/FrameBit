@@ -219,24 +219,39 @@ export class GoogleDriveStorageProvider implements StorageProvider {
   }
 
   async getStream(fileId: string, rangeHeader?: string): Promise<StorageStreamResponse> {
-    const tokenRes = await this.oauth2Client.getAccessToken();
-    const accessToken = tokenRes.token;
+    let accessToken = await this.getAccessToken();
 
-    const requestHeaders: Record<string, string> = {
-      Authorization: `Bearer ${accessToken}`,
+    const fetchStream = async (token: string | null) => {
+      const requestHeaders: Record<string, string> = {
+        Authorization: `Bearer ${token}`,
+      };
+      if (rangeHeader) {
+        requestHeaders['Range'] = rangeHeader;
+      }
+
+      const driveUrl = `https://www.googleapis.com/drive/v3/files/${fileId}?alt=media&supportsAllDrives=true`;
+      return fetch(driveUrl, {
+        method: 'GET',
+        headers: requestHeaders,
+      });
     };
-    if (rangeHeader) {
-      requestHeaders['Range'] = rangeHeader;
+
+    let res = await fetchStream(accessToken);
+
+    // If token expired (401), force refresh token and retry once
+    if (res.status === 401) {
+      console.warn('[GoogleDriveStorageProvider] Access token expired during stream, refreshing...');
+      const { credentials } = await this.oauth2Client.refreshAccessToken();
+      accessToken = credentials.access_token || null;
+      if (accessToken) {
+        await this.persistRefreshedTokens(credentials);
+        res = await fetchStream(accessToken);
+      }
     }
 
-    const driveUrl = `https://www.googleapis.com/drive/v3/files/${fileId}?alt=media&supportsAllDrives=true`;
-    const res = await fetch(driveUrl, {
-      method: 'GET',
-      headers: requestHeaders,
-    });
-
     if (!res.ok && res.status !== 206) {
-      throw new Error(`Google Drive stream request failed with status: ${res.status}`);
+      const errText = await res.text().catch(() => '');
+      throw new Error(`Google Drive stream request failed with status ${res.status}: ${errText}`);
     }
 
     const contentLength = Number(res.headers.get('content-length') || 0);

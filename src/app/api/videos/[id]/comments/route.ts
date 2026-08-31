@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { connectDB } from '@/lib/db';
-import { VideoAsset, Comment, ShareLink, Project } from '@/lib/models';
+import { VideoAsset, Comment, ShareLink, Project, Notification } from '@/lib/models';
 import { getSessionUser, verifyProjectAccess } from '@/lib/auth';
 import { emitRealtimeEvent } from '@/lib/events';
 
@@ -55,10 +55,12 @@ export async function POST(
       guestName = authorName?.trim() || 'Guest Reviewer';
     }
 
+    const commentVersion = versionNumber || asset.currentVersionNumber;
+
     const comment = await Comment.create({
       projectId: asset.projectId,
       assetId: asset._id,
-      versionNumber: versionNumber || asset.currentVersionNumber,
+      versionNumber: commentVersion,
       userId: user ? user._id : undefined,
       guestName,
       text: text.trim(),
@@ -74,11 +76,72 @@ export async function POST(
 
     await comment.populate('userId', 'name email avatar role');
 
-    // No notifications are sent for comments (including @mentions) — only the
-    // realtime SSE broadcast below, so the comment shows up live without spamming
-    // the notification list.
+    // Create In-App Notifications for project owner, editors, and parent comment authors
+    const authorDisplayName = user ? user.name : (guestName || 'Guest Reviewer');
+    const currentUserIdStr = user?._id?.toString();
+    const recipientMap = new Map<string, { type: 'comment_added' | 'comment_reply' | 'mention'; message: string }>();
 
-    // Broadcast SSE realtime event
+    // 1. If replying to a parent comment, notify parent comment author
+    if (parentCommentId) {
+      const parentComment = await Comment.findById(parentCommentId);
+      if (parentComment?.userId && parentComment.userId.toString() !== currentUserIdStr) {
+        recipientMap.set(parentComment.userId.toString(), {
+          type: 'comment_reply',
+          message: `${authorDisplayName} replied to your comment on "${asset.name}" (v${commentVersion})`,
+        });
+      }
+    }
+
+    // 2. Notify project owner and members (editors/reviewers)
+    const projectWithMembers = await Project.findById(asset.projectId);
+    if (projectWithMembers) {
+      const allRecipientIds = [
+        projectWithMembers.ownerId.toString(),
+        ...(projectWithMembers.members || []).map((m: any) => m.userId.toString()),
+      ];
+
+      const snippet = text.trim().length > 50 ? text.trim().slice(0, 47) + '...' : text.trim();
+
+      for (const targetId of allRecipientIds) {
+        if (targetId && targetId !== currentUserIdStr && !recipientMap.has(targetId)) {
+          recipientMap.set(targetId, {
+            type: parentCommentId ? 'comment_reply' : 'comment_added',
+            message: parentCommentId
+              ? `${authorDisplayName} replied on "${asset.name}" (v${commentVersion}): "${snippet}"`
+              : `${authorDisplayName} left feedback on "${asset.name}" (v${commentVersion}): "${snippet}"`,
+          });
+        }
+      }
+    }
+
+    // Save notifications to DB
+    for (const [targetUserId, notif] of recipientMap.entries()) {
+      try {
+        await Notification.create({
+          userId: targetUserId,
+          actorId: user ? user._id : undefined,
+          type: notif.type,
+          projectId: project._id,
+          assetId: asset._id,
+          commentId: comment._id,
+          message: notif.message,
+        });
+      } catch (nErr) {
+        console.warn('Failed to create notification document:', nErr);
+      }
+    }
+
+    // Broadcast SSE realtime event for notifications
+    emitRealtimeEvent({
+      type: 'notification:created',
+      projectId: project._id.toString(),
+      assetId: asset._id.toString(),
+      data: { message: `New feedback from ${authorDisplayName} on ${asset.name}` },
+      actorId: user?._id?.toString(),
+      timestamp: new Date().toISOString(),
+    });
+
+    // Broadcast SSE realtime event for live comment sync
     emitRealtimeEvent({
       type: 'comment:created',
       projectId: project._id.toString(),

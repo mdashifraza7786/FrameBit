@@ -34,21 +34,23 @@ export async function GET(
       }
     }
 
-    // Whether the project owner's Drive is connected — never expose the tokens themselves, just the flag,
-    // so the client can show a "connect Drive" locked state instead of a broken video player.
-    const ownerAuthDoc = await User.findById(project.ownerId._id).select('googleTokens');
-    const ownerDriveConnected = !!(ownerAuthDoc?.googleTokens?.accessToken || ownerAuthDoc?.googleTokens?.refreshToken);
+    // Fetch owner auth tokens status, versions, and comments in parallel
+    const [ownerAuthDoc, versions, comments] = await Promise.all([
+      User.findById(project.ownerId._id).select('googleTokens').lean(),
+      VideoVersion.find({ assetId: asset._id })
+        .populate('uploadedBy', 'name email avatar')
+        .sort({ versionNumber: -1 })
+        .lean(),
+      Comment.find({ assetId: asset._id })
+        .populate('userId', 'name email avatar role')
+        .populate('resolvedBy', 'name email')
+        .sort({ timestamp: 1, createdAt: 1 })
+        .lean(),
+    ]);
 
-    // Fetch all versions
-    const versions = await VideoVersion.find({ assetId: asset._id })
-      .populate('uploadedBy', 'name email avatar')
-      .sort({ versionNumber: -1 });
-
-    // Fetch all comments
-    const comments = await Comment.find({ assetId: asset._id })
-      .populate('userId', 'name email avatar role')
-      .populate('resolvedBy', 'name email')
-      .sort({ timestamp: 1, createdAt: 1 });
+    const ownerDriveConnected = !!(
+      ownerAuthDoc?.googleTokens?.accessToken || ownerAuthDoc?.googleTokens?.refreshToken
+    );
 
     return NextResponse.json({
       asset,

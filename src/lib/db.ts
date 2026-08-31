@@ -19,14 +19,16 @@ if (!cached) {
 }
 
 export async function connectDB(): Promise<typeof mongoose> {
-  if (cached!.conn) {
+  if (cached!.conn && mongoose.connection.readyState === 1) {
     return cached!.conn;
   }
 
-  if (!cached!.promise) {
+  if (!cached!.promise || mongoose.connection.readyState === 0) {
     const opts: mongoose.ConnectOptions = {
       bufferCommands: false,
       maxPoolSize: 10,
+      serverSelectionTimeoutMS: 8000,
+      socketTimeoutMS: 20000,
     };
 
     cached!.promise = mongoose.connect(MONGODB_URI, opts).then((m) => {
@@ -37,6 +39,7 @@ export async function connectDB(): Promise<typeof mongoose> {
   try {
     cached!.conn = await cached!.promise;
   } catch (e) {
+    cached!.conn = null;
     cached!.promise = null;
     throw e;
   }

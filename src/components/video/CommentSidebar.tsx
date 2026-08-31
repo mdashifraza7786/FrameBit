@@ -66,6 +66,8 @@ interface CommentSidebarProps {
   /** The range end, dragged independently on the video's own mini-track (not tied to the playhead). */
   rangeEnd?: number | null;
   onClearRangeStart?: () => void;
+  /** Callback to switch active version when clicking a comment belonging to a different cut */
+  onSelectVersion?: (versionNumber: number) => void;
 }
 
 export function CommentSidebar({
@@ -94,8 +96,10 @@ export function CommentSidebar({
   rangeStart = null,
   rangeEnd = null,
   onClearRangeStart,
+  onSelectVersion,
 }: CommentSidebarProps) {
   const [internalFilter, setInternalFilter] = useState<'all' | 'active' | 'resolved'>('all');
+  const [versionScope, setVersionScope] = useState<'current' | 'all'>('current');
   const filter = externalFilter || internalFilter;
 
   const handleFilterChange = (f: 'all' | 'active' | 'resolved') => {
@@ -227,8 +231,14 @@ export function CommentSidebar({
     }
   };
 
-  // Filter top-level comments
-  const topLevelComments = comments.filter((c) => !c.parentCommentId);
+  // Filter top-level comments with optional version scope
+  const topLevelComments = comments.filter((c) => {
+    if (c.parentCommentId) return false;
+    if (versionScope === 'current' && c.versionNumber && c.versionNumber !== currentVersionNumber) {
+      return false;
+    }
+    return true;
+  });
 
   const filteredComments = topLevelComments.filter((c) => {
     if (filter === 'active' && c.resolved) return false;
@@ -241,7 +251,7 @@ export function CommentSidebar({
     return true;
   });
 
-  const filterLabel = filter === 'all' ? 'All comments' : filter === 'active' ? 'Unresolved' : 'Resolved';
+  const filterLabel = filter === 'all' ? 'All status' : filter === 'active' ? 'Unresolved' : 'Resolved';
 
   return (
     <div
@@ -254,39 +264,67 @@ export function CommentSidebar({
       {/* Header & Filter Tabs */}
       {theaterMode ? (
         <div className="border-b border-zinc-800/80 shrink-0">
-          <div className="flex items-center justify-between gap-2 px-3 py-2.5">
-            {/* "All comments ⌄" filter dropdown */}
-            <div className="relative">
-              <button
-                onClick={() => setFilterMenuOpen((v) => !v)}
-                className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg hover:bg-zinc-900 text-sm font-semibold text-zinc-200 transition-colors"
-              >
-                <span>{filterLabel}</span>
-                <ChevronDown className={`w-3.5 h-3.5 text-zinc-500 transition-transform ${filterMenuOpen ? 'rotate-180' : ''}`} />
-              </button>
+          <div className="flex items-center justify-between gap-2 px-3 py-2">
+            {/* Filter Dropdown + Version Scope Toggle */}
+            <div className="flex items-center gap-1.5 min-w-0">
+              <div className="relative">
+                <button
+                  onClick={() => setFilterMenuOpen((v) => !v)}
+                  className="flex items-center gap-1 px-2 py-1 rounded-lg hover:bg-zinc-900 text-xs font-semibold text-zinc-200 transition-colors"
+                >
+                  <span className="truncate max-w-[85px]">{filterLabel}</span>
+                  <ChevronDown className={`w-3 h-3 text-zinc-500 transition-transform ${filterMenuOpen ? 'rotate-180' : ''}`} />
+                </button>
 
-              {filterMenuOpen && (
-                <>
-                  <div className="fixed inset-0 z-30" onClick={() => setFilterMenuOpen(false)} />
-                  <div className="absolute left-0 mt-1 w-40 rounded-xl bg-zinc-900 border border-zinc-800 shadow-2xl z-40 overflow-hidden py-1">
-                    {(['all', 'active', 'resolved'] as const).map((tab) => (
-                      <button
-                        key={tab}
-                        onClick={() => {
-                          handleFilterChange(tab);
-                          setFilterMenuOpen(false);
-                        }}
-                        className={`w-full text-left px-3 py-1.5 text-xs font-medium transition-colors flex items-center justify-between ${
-                          filter === tab ? 'text-teal-400' : 'text-zinc-300 hover:bg-zinc-800'
-                        }`}
-                      >
-                        <span>{tab === 'all' ? 'All comments' : tab === 'active' ? 'Unresolved' : 'Resolved'}</span>
-                        {filter === tab && <Check className="w-3 h-3" />}
-                      </button>
-                    ))}
-                  </div>
-                </>
-              )}
+                {filterMenuOpen && (
+                  <>
+                    <div className="fixed inset-0 z-30" onClick={() => setFilterMenuOpen(false)} />
+                    <div className="absolute left-0 mt-1 w-40 rounded-xl bg-zinc-900 border border-zinc-800 shadow-2xl z-40 overflow-hidden py-1">
+                      {(['all', 'active', 'resolved'] as const).map((tab) => (
+                        <button
+                          key={tab}
+                          onClick={() => {
+                            handleFilterChange(tab);
+                            setFilterMenuOpen(false);
+                          }}
+                          className={`w-full text-left px-3 py-1.5 text-xs font-medium transition-colors flex items-center justify-between ${
+                            filter === tab ? 'text-teal-400' : 'text-zinc-300 hover:bg-zinc-800'
+                          }`}
+                        >
+                          <span>{tab === 'all' ? 'All status' : tab === 'active' ? 'Unresolved' : 'Resolved'}</span>
+                          {filter === tab && <Check className="w-3 h-3" />}
+                        </button>
+                      ))}
+                    </div>
+                  </>
+                )}
+              </div>
+
+              {/* Version Scope Toggle (Current Cut vs All Cuts) */}
+              <div className="flex items-center bg-zinc-900/80 p-0.5 rounded-lg border border-zinc-800 text-[10px] shrink-0">
+                <button
+                  onClick={() => setVersionScope('current')}
+                  className={`px-1.5 py-0.5 rounded-md font-mono font-medium transition-all ${
+                    versionScope === 'current'
+                      ? 'bg-teal-600 text-white shadow-sm'
+                      : 'text-zinc-400 hover:text-zinc-200'
+                  }`}
+                  title={`Show feedback for v${currentVersionNumber} only`}
+                >
+                  v{currentVersionNumber}
+                </button>
+                <button
+                  onClick={() => setVersionScope('all')}
+                  className={`px-1.5 py-0.5 rounded-md font-medium transition-all ${
+                    versionScope === 'all'
+                      ? 'bg-teal-600 text-white shadow-sm'
+                      : 'text-zinc-400 hover:text-zinc-200'
+                  }`}
+                  title="Show feedback across all versions"
+                >
+                  All cuts
+                </button>
+              </div>
             </div>
 
             <div className="flex items-center gap-1 shrink-0">
@@ -354,25 +392,22 @@ export function CommentSidebar({
         </div>
       )}
 
-      {/* Scrollable Comment Feed */}
-      <div className="flex-1 min-h-0 overflow-y-auto p-2.5 space-y-2 custom-scrollbar">
+      {/* Comment List */}
+      <div className="flex-1 min-h-0 overflow-y-auto p-3 space-y-3 custom-scrollbar">
         {filteredComments.length === 0 ? (
-          theaterMode ? (
-            <div className="h-full min-h-[180px] flex flex-col items-center justify-center text-center p-4">
-              <div className="w-11 h-11 rounded-full bg-zinc-900 border border-zinc-800 flex items-center justify-center mb-3">
-                <MessageSquare className="w-5 h-5 text-zinc-600" />
-              </div>
-              <p className="text-sm font-semibold text-zinc-300">
-                {searchQuery ? 'No matching comments' : 'No comments — yet'}
-              </p>
+          searchQuery ? (
+            <div className="p-6 text-center text-slate-400 dark:text-zinc-600 text-xs">
+              No comments match &quot;{searchQuery}&quot;
             </div>
           ) : (
-            <div className="h-full min-h-[180px] flex flex-col items-center justify-center text-center p-4 text-slate-400 dark:text-zinc-600">
-              <MessageSquare className="w-7 h-7 mb-2 stroke-1" />
-              <p className="text-xs font-medium">No comments found in this view.</p>
-              <p className="text-[10px] text-slate-500 dark:text-zinc-500 mt-1">
-                Select <span className="text-brand-500 dark:text-teal-500 font-semibold">Pin</span> or{' '}
-                <span className="text-cyan-500 font-semibold">Draw</span> tool on video to add precise feedback.
+            <div className="p-8 text-center text-slate-400 dark:text-zinc-600 space-y-2">
+              <MessageSquare className="w-8 h-8 mx-auto opacity-30 text-teal-400" />
+              <p className="text-xs">
+                {filter === 'all'
+                  ? versionScope === 'current'
+                    ? `No comments on cut v${currentVersionNumber} yet.`
+                    : 'No comments yet on any version.'
+                  : `No ${filter} comments found.`}
               </p>
             </div>
           )
@@ -380,14 +415,12 @@ export function CommentSidebar({
           filteredComments.map((comment) => {
             const replies = comments.filter((c) => c.parentCommentId === comment._id);
             const isToggledOn = activeCommentId === comment._id;
-            // In theater mode the highlight tracks the playhead the same way the on-video pin does — it
-            // only lights up right at the comment's own timestamp, not for as long as it stays toggled on.
             const isActive =
               isToggledOn &&
               (!theaterMode ||
                 (comment.timestampEnd && comment.timestampEnd > comment.timestamp
-                  ? currentTimestamp >= comment.timestamp - 0.15 && currentTimestamp <= comment.timestampEnd + 0.15
-                  : Math.abs(currentTimestamp - comment.timestamp) <= 0.15));
+                  ? currentTimestamp >= comment.timestamp - 1.0 && currentTimestamp <= comment.timestampEnd + 1.0
+                  : Math.abs(currentTimestamp - comment.timestamp) <= 1.0));
             const authorName = comment.userId?.name || comment.guestName || 'Reviewer';
             const isAuthor =
               currentUser &&
@@ -399,7 +432,12 @@ export function CommentSidebar({
               <div
                 key={comment._id}
                 ref={isToggledOn ? activeCardRef : null}
-                onClick={() => onSeekTo(comment.timestamp, comment._id)}
+                onClick={() => {
+                  if (comment.versionNumber && comment.versionNumber !== currentVersionNumber) {
+                    onSelectVersion?.(comment.versionNumber);
+                  }
+                  onSeekTo(comment.timestamp, comment._id);
+                }}
                 className={`p-2.5 rounded-xl border transition-all cursor-pointer ${
                   isActive
                     ? 'bg-brand-50/70 dark:bg-teal-950/20 border-brand-500 ring-2 ring-brand-500/20 dark:border-teal-500 dark:ring-teal-500/20 shadow-md'
@@ -413,6 +451,9 @@ export function CommentSidebar({
                     <button
                       onClick={(e) => {
                         e.stopPropagation();
+                        if (comment.versionNumber && comment.versionNumber !== currentVersionNumber) {
+                          onSelectVersion?.(comment.versionNumber);
+                        }
                         onSeekTo(comment.timestamp, comment._id);
                       }}
                       className="px-1.5 py-0.5 rounded-md bg-brand-500/10 dark:bg-teal-600/20 hover:bg-brand-500/20 dark:hover:bg-teal-500/20 text-brand-700 dark:text-teal-300 font-mono text-[10px] font-semibold border border-brand-500/30 dark:border-teal-500/30 flex items-center gap-1 transition-colors shrink-0"
@@ -423,6 +464,31 @@ export function CommentSidebar({
                         ? `${formatTimecode(comment.timestamp)} → ${formatTimecode(comment.timestampEnd)}`
                         : formatTimecode(comment.timestamp)}
                     </button>
+
+                    {comment.versionNumber && (
+                      <span
+                        onClick={(e) => {
+                          if (comment.versionNumber && comment.versionNumber !== currentVersionNumber) {
+                            e.stopPropagation();
+                            onSelectVersion?.(comment.versionNumber);
+                            onSeekTo(comment.timestamp, comment._id);
+                          }
+                        }}
+                        className={`px-1.5 py-0.5 rounded text-[9px] font-mono font-bold border shrink-0 transition-colors ${
+                          comment.versionNumber === currentVersionNumber
+                            ? 'bg-teal-500/15 text-teal-400 border-teal-500/30'
+                            : 'bg-zinc-800 text-zinc-400 border-zinc-700 hover:border-teal-500/50 hover:text-teal-300'
+                        }`}
+                        title={
+                          comment.versionNumber === currentVersionNumber
+                            ? `Current cut: v${comment.versionNumber}`
+                            : `Click to switch to Cut v${comment.versionNumber}`
+                        }
+                      >
+                        v{comment.versionNumber}
+                      </span>
+                    )}
+
                     <span className="font-semibold text-xs text-slate-800 dark:text-zinc-200 truncate">
                       {authorName}
                     </span>
@@ -559,7 +625,7 @@ export function CommentSidebar({
                               {new Date(reply.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                             </span>
                           </div>
-                          <p className="text-slate-600 dark:text-zinc-300">{reply.text}</p>
+                          <p className="text-slate-600 dark:text-zinc-300">{renderWithMentions(reply.text)}</p>
                         </div>
                       );
                     })}

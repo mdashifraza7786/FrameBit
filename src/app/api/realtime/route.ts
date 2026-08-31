@@ -9,12 +9,37 @@ export async function GET(req: NextRequest) {
 
   let unsubscribe: (() => void) | null = null;
   let intervalId: NodeJS.Timeout | null = null;
+  let maxDurationTimer: NodeJS.Timeout | null = null;
 
   const stream = new ReadableStream({
     start(controller) {
+      let isClosed = false;
+
+      const cleanup = () => {
+        if (isClosed) return;
+        isClosed = true;
+        if (unsubscribe) {
+          unsubscribe();
+          unsubscribe = null;
+        }
+        if (intervalId) {
+          clearInterval(intervalId);
+          intervalId = null;
+        }
+        if (maxDurationTimer) {
+          clearTimeout(maxDurationTimer);
+          maxDurationTimer = null;
+        }
+      };
+
       const sendEvent = (payload: RealtimePayload) => {
-        const text = `data: ${JSON.stringify(payload)}\n\n`;
-        controller.enqueue(new TextEncoder().encode(text));
+        if (isClosed) return;
+        try {
+          const text = `data: ${JSON.stringify(payload)}\n\n`;
+          controller.enqueue(new TextEncoder().encode(text));
+        } catch {
+          cleanup();
+        }
       };
 
       // Subscribe to real-time events on channel
@@ -25,16 +50,35 @@ export async function GET(req: NextRequest) {
 
       // Keep-alive heartbeat every 15 seconds
       intervalId = setInterval(() => {
+        if (isClosed) return;
         try {
           controller.enqueue(new TextEncoder().encode(`: ping\n\n`));
         } catch {
-          if (intervalId) clearInterval(intervalId);
+          cleanup();
         }
       }, 15000);
+
+      // Gracefully close stream after 55s before Vercel's serverless timeout threshold.
+      // Browser EventSource automatically reconnects immediately with zero interruption.
+      maxDurationTimer = setTimeout(() => {
+        cleanup();
+        try {
+          controller.close();
+        } catch {}
+      }, 55000);
+
+      // Handle client disconnect / tab close immediately
+      req.signal.addEventListener('abort', () => {
+        cleanup();
+        try {
+          controller.close();
+        } catch {}
+      });
     },
     cancel() {
       if (unsubscribe) unsubscribe();
       if (intervalId) clearInterval(intervalId);
+      if (maxDurationTimer) clearTimeout(maxDurationTimer);
     },
   });
 

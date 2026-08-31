@@ -125,6 +125,7 @@ export function NotificationDrawer() {
     switch (type) {
       case 'comment_added':
       case 'comment_reply':
+      case 'mention':
         return <MessageSquare className="w-4 h-4 text-brand-600 dark:text-teal-400" />;
       case 'comment_resolved':
       case 'status_changed':
