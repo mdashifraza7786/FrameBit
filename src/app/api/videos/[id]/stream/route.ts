@@ -3,7 +3,108 @@ import { connectDB } from '@/lib/db';
 import { VideoAsset, VideoVersion, Project, User, ShareLink } from '@/lib/models';
 import { getSessionUser, verifyProjectAccess } from '@/lib/auth';
 import { getStorageProviderForUser, driveNotConnectedMessage } from '@/lib/storage';
-import { Readable } from 'stream';
+
+export const dynamic = 'force-dynamic';
+export const fetchCache = 'force-no-store';
+
+async function resolveVideoStreamContext(
+  req: NextRequest,
+  id: string
+) {
+  const { searchParams } = new URL(req.url);
+  const versionParam = searchParams.get('version');
+  const shareToken = searchParams.get('token');
+
+  await connectDB();
+  const asset = await VideoAsset.findById(id);
+  if (!asset) {
+    return { error: 'Video asset not found', status: 404 };
+  }
+
+  let hasAccess = false;
+  let sessionUser = null;
+  const project = await Project.findById(asset.projectId);
+  if (!project) {
+    return { error: 'Project not found', status: 404 };
+  }
+
+  // 1. Check share token if provided
+  if (shareToken) {
+    const shareLink = await ShareLink.findOne({
+      token: shareToken,
+      assetId: asset._id,
+    });
+
+    if (shareLink) {
+      if (!shareLink.expiresAt || new Date(shareLink.expiresAt) > new Date()) {
+        hasAccess = true;
+      }
+    }
+  }
+
+  // 2. Check session user if not authorized by token
+  if (!hasAccess) {
+    sessionUser = await getSessionUser(req);
+    if (sessionUser) {
+      const check = await verifyProjectAccess(project._id.toString(), sessionUser._id.toString(), 'reviewer');
+      if (check.allowed) {
+        hasAccess = true;
+      }
+    }
+  }
+
+  if (!hasAccess) {
+    return { error: 'Unauthorized to view this video', status: 403 };
+  }
+
+  // Target version
+  const versionNumber = versionParam ? parseInt(versionParam, 10) : asset.currentVersionNumber;
+  const version = await VideoVersion.findOne({
+    assetId: asset._id,
+    versionNumber,
+  });
+
+  if (!version) {
+    return { error: 'Video version not found', status: 404 };
+  }
+
+  const projectOwner = await User.findById(project.ownerId);
+  return { asset, project, version, projectOwner, sessionUser };
+}
+
+// Support HEAD requests for browser media probes (crucial for Safari/iOS WebKit range probing)
+export async function HEAD(
+  req: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  try {
+    const { id } = await params;
+    const ctx = await resolveVideoStreamContext(req, id);
+    if ('error' in ctx) {
+      return new Response(null, { status: ctx.status });
+    }
+
+    const { version } = ctx;
+    const headers: Record<string, string> = {
+      'Content-Type': version.mimeType || 'video/mp4',
+      'Accept-Ranges': 'bytes',
+      'Cache-Control': 'private, max-age=86400',
+      'Content-Disposition': 'inline',
+    };
+
+    if (version.size && version.size > 0) {
+      headers['Content-Length'] = version.size.toString();
+    }
+
+    return new Response(null, {
+      status: 200,
+      headers,
+    });
+  } catch (error) {
+    console.error('Video HEAD stream error:', error);
+    return new Response(null, { status: 500 });
+  }
+}
 
 export async function GET(
   req: NextRequest,
@@ -11,65 +112,12 @@ export async function GET(
 ) {
   try {
     const { id } = await params;
-    const { searchParams } = new URL(req.url);
-    const versionParam = searchParams.get('version');
-    const shareToken = searchParams.get('token');
-
-    await connectDB();
-    const asset = await VideoAsset.findById(id);
-    if (!asset) {
-      return NextResponse.json({ error: 'Video asset not found' }, { status: 404 });
+    const ctx = await resolveVideoStreamContext(req, id);
+    if ('error' in ctx) {
+      return NextResponse.json({ error: ctx.error }, { status: ctx.status });
     }
 
-    let hasAccess = false;
-    let sessionUser = null;
-    let project = await Project.findById(asset.projectId);
-    if (!project) {
-      return NextResponse.json({ error: 'Project not found' }, { status: 404 });
-    }
-
-    // 1. Check share token if provided
-    if (shareToken) {
-      const shareLink = await ShareLink.findOne({
-        token: shareToken,
-        assetId: asset._id,
-      });
-
-      if (shareLink) {
-        if (!shareLink.expiresAt || new Date(shareLink.expiresAt) > new Date()) {
-          hasAccess = true;
-        }
-      }
-    }
-
-    // 2. Check session user if not authorized by token
-    if (!hasAccess) {
-      sessionUser = await getSessionUser(req);
-      if (sessionUser) {
-        const check = await verifyProjectAccess(project._id.toString(), sessionUser._id.toString(), 'reviewer');
-        if (check.allowed) {
-          hasAccess = true;
-        }
-      }
-    }
-
-    if (!hasAccess) {
-      return NextResponse.json({ error: 'Unauthorized to view this video' }, { status: 403 });
-    }
-
-    // Target version
-    const versionNumber = versionParam ? parseInt(versionParam, 10) : asset.currentVersionNumber;
-    const version = await VideoVersion.findOne({
-      assetId: asset._id,
-      versionNumber,
-    });
-
-    if (!version) {
-      return NextResponse.json({ error: 'Video version not found' }, { status: 404 });
-    }
-
-    // Get owner's storage credentials to stream the file
-    const projectOwner = await User.findById(project.ownerId);
+    const { projectOwner, sessionUser, version } = ctx;
     const storage = getStorageProviderForUser(projectOwner);
     if (!storage || !projectOwner) {
       const requesterIsOwner = !!sessionUser && projectOwner?._id.toString() === sessionUser._id.toString();
@@ -86,9 +134,11 @@ export async function GET(
     const streamResult = await storage.getStream(version.driveFileId, rangeHeader);
 
     const responseHeaders: Record<string, string> = {
-      'Content-Type': streamResult.contentType || 'video/mp4',
+      'Content-Type': streamResult.contentType || version.mimeType || 'video/mp4',
       'Accept-Ranges': 'bytes',
-      'Cache-Control': 'private, max-age=3600, stale-while-revalidate=86400',
+      'Cache-Control': 'private, max-age=86400',
+      'Content-Disposition': 'inline',
+      'X-Content-Type-Options': 'nosniff',
     };
 
     if (streamResult.contentLength > 0) {

@@ -1088,31 +1088,42 @@ export const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(funct
             }
           }}
           onError={(e) => {
-            console.warn('[VideoPlayer] Video stream error event caught, auto-recovering...', e);
-            if (retryCountRef.current < 4) {
+            const mediaError = videoRef.current?.error;
+            console.warn('[VideoPlayer] Video stream error event caught:', mediaError, e);
+            // Ignore code 1 (MEDIA_ERR_ABORTED - normal during seek or unmount)
+            if (mediaError && mediaError.code !== 1 && retryCountRef.current < 2) {
               retryCountRef.current += 1;
-              handleStreamRecovery();
+              setTimeout(() => {
+                handleStreamRecovery();
+              }, 500);
+            }
+          }}
+          onProgress={() => {
+            // Actively monitor browser buffer progress. If playhead is covered by buffer, release buffering spinner
+            if (videoRef.current) {
+              const cur = videoRef.current.currentTime;
+              const buf = videoRef.current.buffered;
+              for (let i = 0; i < buf.length; i++) {
+                if (buf.start(i) <= cur && cur <= buf.end(i)) {
+                  if (buf.end(i) - cur > 0.4) {
+                    clearBuffering();
+                  }
+                  break;
+                }
+              }
             }
           }}
           onStalled={() => {
-            triggerBuffering(300);
-            if (stallTimerRef.current) clearTimeout(stallTimerRef.current);
-            stallTimerRef.current = setTimeout(() => {
-              if (videoRef.current && !videoRef.current.paused && isPlaying) {
-                handleStreamRecovery();
-              }
-            }, 3500);
+            // Normal network pause: do NOT reload video; allow browser to continue buffering
+            if (isPlaying) {
+              triggerBuffering(350);
+            }
           }}
           onWaiting={() => {
-            triggerBuffering(200);
-            if (stallTimerRef.current) clearTimeout(stallTimerRef.current);
-            stallTimerRef.current = setTimeout(() => {
-              if (videoRef.current && isPlaying) {
-                handleStreamRecovery();
-              }
-            }, 3500);
+            // Player is waiting for next chunk: display buffer indicator without wiping browser download pipeline
+            triggerBuffering(150);
           }}
-          onSeeking={() => triggerBuffering(200)}
+          onSeeking={() => triggerBuffering(150)}
           onSeeked={() => clearBuffering()}
           onCanPlay={() => clearBuffering()}
           onCanPlayThrough={() => clearBuffering()}
