@@ -5,7 +5,7 @@
 ---
 
 ## 🚀 Core Philosophy: Zero Server Video Storage
-
+ 
 The application **never stores video files on the application server disk or in database binaries**.
 
 1. **Google Drive Backend**: When an editor or owner uploads a video, the application backend initiates a Google Drive resumable upload session. The browser uploads video chunks directly to Google Drive via the resumable URI.
